@@ -1,4 +1,6 @@
-# Openfile
+# ChessOnTop
+
+Live site: [deepinkgroup.github.io/ChessOnTop](https://deepinkgroup.github.io/ChessOnTop/)
 
 A responsive chess opening studio with 3,810 searchable ECO A–E lines, beginner lessons, a legal interactive board, move playback, practice from either side, position recognition across move orders, saved openings, and local progress. Play mode adds complete games against a computer opponent, opening book replies, two difficulty settings, takebacks, and game result feedback.
 
