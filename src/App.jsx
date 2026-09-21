@@ -304,6 +304,19 @@ const BASICS_LESSONS = [
     exercise: "Trade pieces on the free board, then march your king toward the center.",
     quiz: { question: "What changes for the king in an endgame?", choices: ["It stays hidden", "It becomes an active piece", "It cannot move"], answer: 1 },
   },
+  {
+    title: "Piece value and trades",
+    eyebrow: "07 · MAKE GOOD EXCHANGES",
+    icon: Swords,
+    description: "Piece values give you a quick way to compare trades, while activity and king safety tell you when the numbers are only part of the story.",
+    points: [
+      "Use the simple guide: pawn 1, knight 3, bishop 3, rook 5, and queen 9. The king cannot be traded.",
+      "An equal trade can still help or hurt depending on which piece was active, defended, or protecting your king.",
+      "Before every capture, count the attackers and defenders, then picture the position after the exchange.",
+    ],
+    exercise: "Set up a simple capture and count the material each side would give up before making the move.",
+    quiz: { question: "Which trade usually wins material?", choices: ["A queen for a pawn", "A bishop for a queen", "A rook for a rook"], answer: 1 },
+  },
 ];
 const PIECE_GUIDE = [
   { name: "King", code: "K", movement: "One square in any direction" },
@@ -514,6 +527,8 @@ function App() {
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
   const [freeMoves, setFreeMoves] = useState([]);
   const [playMoves, setPlayMoves] = useState([]);
+  const [practiceMoves, setPracticeMoves] = useState([]);
+  const [practiceFree, setPracticeFree] = useState(false);
   const [playSide, setPlaySide] = useState("w");
   const [difficulty, setDifficulty] = useState("focused");
   const [practicePly, setPracticePly] = useState(0);
@@ -549,7 +564,7 @@ function App() {
   const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", content: "" });
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
-  const [profileName, setProfileName] = useState("");
+  const [profileForm, setProfileForm] = useState({ fullName: "", country: "", fideRating: "", chessTitle: "None", playingLevel: "Beginner", favoriteOpening: "", bio: "" });
   const [profileMessage, setProfileMessage] = useState("");
   const visibleBooks = books.filter((book) => book.visible !== false);
   const visibleArticles = articles.filter((article) => article.visible !== false);
@@ -559,7 +574,15 @@ function App() {
     else sessionStorage.removeItem("openfile-session");
   }, [currentUser]);
   useEffect(() => {
-    setProfileName(currentUser?.name || "");
+    setProfileForm({
+      fullName: currentUser?.name || "",
+      country: currentUser?.country || "",
+      fideRating: currentUser?.fideRating || "",
+      chessTitle: currentUser?.chessTitle || "None",
+      playingLevel: currentUser?.playingLevel || "Beginner",
+      favoriteOpening: currentUser?.favoriteOpening || "",
+      bio: currentUser?.bio || "",
+    });
     setProfileMessage("");
   }, [currentUser?.id]);
 
@@ -579,15 +602,17 @@ function App() {
   const displayedMoves =
     mode === "play"
       ? playMoves
+      : mode === "practice"
+      ? practiceMoves
       : mode === "explore"
       ? freeMoves
-      : opening.moves.slice(0, mode === "practice" ? practicePly : ply);
+      : opening.moves.slice(0, ply);
   const game = useMemo(
     () => makeGame(displayedMoves),
     [displayedMoves.join(" ")],
   );
   const recognizedOpening =
-    mode === "explore" || mode === "play"
+    mode === "explore" || mode === "play" || (mode === "practice" && practiceFree)
       ? OPENING_BY_LINE.get(displayedMoves.join(" ")) ||
         OPENING_BY_POSITION.get(game.fen().split(" ").slice(0, 4).join(" "))
       : null;
@@ -644,6 +669,7 @@ function App() {
   }, [computerThinking, playMoves, difficulty, pendingPromotion]);
   useEffect(() => {
     if (mode !== "practice") return;
+    if (practiceFree) return;
     if (availablePracticeMoves === 0) {
       setPracticeFeedback(
         `This line has no ${practiceSide === "w" ? "White" : "Black"} moves to practice. Choose the other side or a longer line.`,
@@ -659,16 +685,17 @@ function App() {
     }
     const nextColor = practicePly % 2 === 0 ? "w" : "b";
     if (nextColor !== practiceSide) {
-      const timer = setTimeout(
-        () => setPracticePly((current) => current + 1),
-        540,
-      );
+      const timer = setTimeout(() => {
+        setPracticeMoves((current) => [...current, opening.moves[practicePly]]);
+        setPracticePly((current) => current + 1);
+      }, 540);
       return () => clearTimeout(timer);
     }
   }, [
     mode,
     practicePly,
     practiceSide,
+    practiceFree,
     opening,
     availablePracticeMoves,
     setCompleted,
@@ -720,6 +747,8 @@ function App() {
     setFreeMoves([]);
     setPlayMoves([]);
     setPracticePly(0);
+    setPracticeMoves([]);
+    setPracticeFree(false);
     setPracticeMistakes(0);
     setPracticeFeedback("");
     setShowHint(false);
@@ -749,6 +778,8 @@ function App() {
     if (next === "practice") {
       setMode("practice");
       setPracticePly(0);
+      setPracticeMoves([]);
+      setPracticeFree(false);
       setPracticeFeedback("");
       setShowHint(false);
       setPracticeMistakes(0);
@@ -778,7 +809,11 @@ function App() {
     setPracticeFeedback("");
     setPracticeMistakes(0);
     setShowHint(false);
-    if (next === "practice") setPracticePly(0);
+    if (next === "practice") {
+      setPracticePly(0);
+      setPracticeMoves([]);
+      setPracticeFree(false);
+    }
     if (next === "explore") setFreeMoves(opening.moves.slice(0, ply));
     if (next === "play") {
       setPlayMoves([]);
@@ -798,6 +833,7 @@ function App() {
     if (mode === "play" && (computerThinking || playResult)) return;
     if (
       mode === "practice" &&
+      !practiceFree &&
       (practicePly >= opening.moves.length || availablePracticeMoves === 0)
     )
       return;
@@ -822,16 +858,22 @@ function App() {
       return;
     }
     if (mode === "practice") {
+      if (practiceFree) {
+        setPracticeMoves((current) => [...current, move.san]);
+        setPracticeFeedback("Free practice continues — the opening updates with your moves.");
+        return;
+      }
       const expected = opening.moves[practicePly];
       if (move.san === expected) {
+        setPracticeMoves((current) => [...current, move.san]);
         setPracticePly((current) => current + 1);
         setPracticeFeedback("That’s the move!");
         setShowHint(false);
       } else {
+        setPracticeMoves((current) => [...current, move.san]);
+        setPracticeFree(true);
         setPracticeMistakes((current) => current + 1);
-        setPracticeFeedback(
-          `That move is legal, but it is outside this line. Try again${showHint ? ` — ${expected}` : "."}`,
-        );
+        setPracticeFeedback("You branched from the selected line. Free practice is active and the opening will follow your moves.");
       }
     } else if (mode === "play") {
       setPlayMoves((current) => [...current, move.san]);
@@ -848,6 +890,7 @@ function App() {
     if (mode === "play" && (computerThinking || playResult)) return;
     if (
       mode === "practice" &&
+      !practiceFree &&
       (practicePly >= opening.moves.length || availablePracticeMoves === 0)
     )
       return;
@@ -890,7 +933,7 @@ function App() {
   async function copyPgn() {
     try {
       await navigator.clipboard.writeText(
-        mode === "explore" || mode === "play" ? game.pgn() : opening.pgn,
+        mode === "explore" || mode === "play" || (mode === "practice" && practiceFree) ? game.pgn() : opening.pgn,
       );
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
@@ -929,9 +972,9 @@ function App() {
       }
       const salt = crypto.randomUUID();
       const passwordHash = await passwordDigest(password, salt);
-      const user = { id: crypto.randomUUID(), name: authForm.name.trim(), email, salt, passwordHash, role: "user", premium: false, status: "active", joined: new Date().toISOString() };
+      const user = { id: crypto.randomUUID(), name: authForm.name.trim(), email, salt, passwordHash, role: "user", premium: false, status: "active", joined: new Date().toISOString(), country: "", fideRating: "", chessTitle: "None", playingLevel: "Beginner", favoriteOpening: "", bio: "" };
       setUsers((current) => [...current, user]);
-      setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: false });
+      setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: false, country: "", fideRating: "", chessTitle: "None", playingLevel: "Beginner", favoriteOpening: "", bio: "" });
       setAuthForm({ name: "", email: "", password: "" });
       setView("account");
       return;
@@ -941,7 +984,7 @@ function App() {
       setAuthError(user?.status === "disabled" ? "This account has been disabled by an administrator." : "Email or password is incorrect.");
       return;
     }
-    setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: !!user.premium });
+    setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: !!user.premium, country: user.country || "", fideRating: user.fideRating || "", chessTitle: user.chessTitle || "None", playingLevel: user.playingLevel || "Beginner", favoriteOpening: user.favoriteOpening || "", bio: user.bio || "" });
     setAuthForm({ name: "", email: "", password: "" });
     setView("account");
   }
@@ -954,11 +997,25 @@ function App() {
 
   function saveProfile(event) {
     event.preventDefault();
-    const name = profileName.trim();
+    const name = profileForm.fullName.trim();
     if (name.length < 2 || currentUser?.role !== "user") return;
-    setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, name } : user));
-    setCurrentUser((current) => ({ ...current, name }));
+    const details = {
+      name,
+      country: profileForm.country.trim(),
+      fideRating: profileForm.fideRating ? String(Math.max(0, Math.min(3500, Number(profileForm.fideRating)))) : "",
+      chessTitle: profileForm.chessTitle,
+      playingLevel: profileForm.playingLevel,
+      favoriteOpening: profileForm.favoriteOpening.trim(),
+      bio: profileForm.bio.trim(),
+    };
+    setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, ...details } : user));
+    setCurrentUser((current) => ({ ...current, ...details }));
     setProfileMessage("Profile updated.");
+  }
+
+  function updateProfileField(field, value) {
+    setProfileForm((current) => ({ ...current, [field]: value }));
+    setProfileMessage("");
   }
 
   function exportStudioContent() {
@@ -1293,7 +1350,7 @@ function App() {
                 <div className="section-heading basics-section-heading">
                   <div>
                     <span className="eyebrow dark">A LITTLE AT A TIME</span>
-                    <h2>Your first six lessons</h2>
+                    <h2>Your seven chess essentials</h2>
                     <p>Read the idea, try the board challenge, then pass the checkpoint.</p>
                   </div>
                 </div>
@@ -1574,7 +1631,7 @@ function App() {
                 <section className="account-page">
                   <div className="account-hero">
                     <span className="account-avatar">{currentUser.name[0]}</span>
-                    <div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email}</p><span className={`member-pill ${currentUser.premium ? "premium" : ""}`}>{currentUser.premium ? <Sparkles size={12} /> : <User size={12} />}{currentUser.premium ? "Premium member" : "Standard member"}</span></div>
+                    <div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email}</p><div className="player-identity">{currentUser.country && <span>{currentUser.country}</span>}{currentUser.chessTitle && currentUser.chessTitle !== "None" && <span>{currentUser.chessTitle}</span>}{currentUser.fideRating && <span>FIDE {currentUser.fideRating}</span>}<span className={`member-pill ${currentUser.premium ? "premium" : ""}`}>{currentUser.premium ? <Sparkles size={12} /> : <User size={12} />}{currentUser.premium ? "Premium member" : "Standard member"}</span></div></div>
                     <button onClick={signOut}><LogOut size={16} /> Sign out</button>
                   </div>
                   <div className="account-stats"><div><Bookmark size={20} /><strong>{favorites.length}</strong><span>Saved lines</span></div><div><Trophy size={20} /><strong>{completed.length}</strong><span>Mastered</span></div><div><GraduationCap size={20} /><strong>{basicCompleted.length}/{BASICS_LESSONS.length}</strong><span>Basics complete</span></div><div><Library size={20} /><strong>{readingList.length}</strong><span>Books saved</span></div></div>
@@ -1586,8 +1643,18 @@ function App() {
                       <button onClick={() => chooseView(basicCompleted.length < BASICS_LESSONS.length ? "basics" : "practice")}>{basicCompleted.length < BASICS_LESSONS.length ? "Continue foundations" : "Start a practice line"}<ArrowRight size={15} /></button>
                     </section>
                     <section className="profile-details">
-                      <div className="profile-section-heading"><span><User size={19} /></span><div><span className="eyebrow dark">ACCOUNT DETAILS</span><h2>Your profile</h2></div></div>
-                      <form onSubmit={saveProfile}><label>Display name<input aria-label="Display name" value={profileName} onChange={(event) => { setProfileName(event.target.value); setProfileMessage(""); }} /></label><label>Email address<input value={currentUser.email} disabled /></label><div className="profile-form-footer"><span aria-live="polite">{profileMessage}</span><button type="submit">Save changes</button></div></form>
+                      <div className="profile-section-heading"><span><User size={19} /></span><div><span className="eyebrow dark">ACCOUNT DETAILS</span><h2>Your chess identity</h2></div></div>
+                      <form onSubmit={saveProfile}>
+                        <label>Full name<input required aria-label="Full name" value={profileForm.fullName} onChange={(event) => updateProfileField("fullName", event.target.value)} /></label>
+                        <label>Country<input aria-label="Country" value={profileForm.country} onChange={(event) => updateProfileField("country", event.target.value)} placeholder="Example: Iran" /></label>
+                        <label>FIDE rating<input aria-label="FIDE rating" type="number" min="0" max="3500" value={profileForm.fideRating} onChange={(event) => updateProfileField("fideRating", event.target.value)} placeholder="Unrated" /></label>
+                        <label>Chess title<select aria-label="Chess title" value={profileForm.chessTitle} onChange={(event) => updateProfileField("chessTitle", event.target.value)}><option>None</option><option>CM</option><option>FM</option><option>IM</option><option>GM</option><option>WCM</option><option>WFM</option><option>WIM</option><option>WGM</option></select></label>
+                        <label>Playing level<select aria-label="Playing level" value={profileForm.playingLevel} onChange={(event) => updateProfileField("playingLevel", event.target.value)}><option>Beginner</option><option>Improving</option><option>Club player</option><option>Advanced</option><option>Competitive</option></select></label>
+                        <label>Favorite opening<input aria-label="Favorite opening" value={profileForm.favoriteOpening} onChange={(event) => updateProfileField("favoriteOpening", event.target.value)} placeholder="Example: Sicilian Defense" /></label>
+                        <label className="profile-email">Email address<input value={currentUser.email} disabled /></label>
+                        <label className="profile-bio">Short chess bio<textarea aria-label="Short chess bio" value={profileForm.bio} onChange={(event) => updateProfileField("bio", event.target.value)} placeholder="Your goals, style, or chess story" maxLength={220} /></label>
+                        <div className="profile-form-footer"><span aria-live="polite">{profileMessage}</span><button type="submit">Save profile</button></div>
+                      </form>
                     </section>
                     <section className="profile-preferences">
                       <div><span className="eyebrow dark">BOARD PREFERENCE</span><h2>Choose your board</h2><p>This color will be used across study, practice, and play.</p></div>
@@ -1687,6 +1754,8 @@ function App() {
                       <button key={id} className={practiceStyle === id ? "active" : ""} onClick={() => {
                         setPracticeStyle(id);
                         setPracticePly(0);
+                        setPracticeMoves([]);
+                        setPracticeFree(false);
                         setPracticeMistakes(0);
                         setPracticeFeedback("");
                         setShowHint(false);
@@ -1940,6 +2009,8 @@ function App() {
               <span className="eco-pill dark-pill">
                 {mode === "play"
                   ? "GAME"
+                  : mode === "practice" && practiceFree
+                  ? recognizedOpening?.eco || "FREE"
                   : view === "basics" && mode === "explore"
                   ? "START"
                   : opening.eco}
@@ -1948,6 +2019,8 @@ function App() {
                 <h3>
                   {mode === "play"
                     ? recognizedOpening?.name || "Your game"
+                    : mode === "practice" && practiceFree
+                    ? recognizedOpening?.name || "Exploring a new line"
                     : view === "basics" && mode === "explore"
                     ? "Free practice board"
                     : opening.name}
@@ -1955,6 +2028,8 @@ function App() {
                 <p>
                   {mode === "play"
                     ? recognizedOpening ? "Opening recognized from your moves" : "Play from the starting position"
+                    : mode === "practice" && practiceFree
+                    ? recognizedOpening ? "Opening updated from the moves you played" : "Keep playing — recognition updates after every move"
                     : mode === "explore" && recognizedOpening
                     ? `Position reached: ${recognizedOpening.name}`
                     : view === "basics" && mode === "explore"
@@ -2123,6 +2198,8 @@ function App() {
                     onClick={() => {
                       setPracticeSide("w");
                       setPracticePly(0);
+                      setPracticeMoves([]);
+                      setPracticeFree(false);
                       setPracticeMistakes(0);
                       setPracticeFeedback("");
                       setShowHint(false);
@@ -2135,6 +2212,8 @@ function App() {
                     onClick={() => {
                       setPracticeSide("b");
                       setPracticePly(0);
+                      setPracticeMoves([]);
+                      setPracticeFree(false);
                       setPracticeMistakes(0);
                       setPracticeFeedback("");
                       setShowHint(false);
@@ -2144,12 +2223,14 @@ function App() {
                   </button>
                 </div>
                 <div className="practice-actions">
-                  <button onClick={() => setShowHint(true)} disabled={practiceStyle === "challenge"}>
+                  <button onClick={() => setShowHint(true)} disabled={practiceFree || practiceStyle === "challenge"}>
                     <Lightbulb size={16} /> Hint
                   </button>
                   <button
                     onClick={() => {
                       setPracticePly(0);
+                      setPracticeMoves([]);
+                      setPracticeFree(false);
                       setPracticeMistakes(0);
                       setPracticeFeedback("");
                       setShowHint(false);
@@ -2180,7 +2261,7 @@ function App() {
                   {mode === "play"
                     ? "Game moves"
                     : mode === "practice"
-                    ? "Your practice line"
+                    ? practiceFree ? "Your free practice" : "Your practice line"
                     : mode === "explore"
                       ? "Moves played"
                       : "Main line"}
@@ -2190,10 +2271,12 @@ function App() {
                     ? `${playMoves.length} ${playMoves.length === 1 ? "move" : "moves"}`
                     : mode === "explore"
                     ? `${freeMoves.length} ${freeMoves.length === 1 ? "move" : "moves"}`
+                    : mode === "practice" && practiceFree
+                    ? `${practiceMoves.length} ${practiceMoves.length === 1 ? "move" : "moves"}`
                     : `${mode === "practice" ? practicePly : ply}/${opening.moves.length}`}
                 </span>
               </div>
-              {mode === "learn" || mode === "practice" ? (
+              {mode === "learn" || mode === "practice" && !practiceFree ? (
                 <div className="line-progress">
                   <span
                     style={{
@@ -2203,11 +2286,11 @@ function App() {
                 </div>
               ) : null}
               <div className="move-list">
-                {(mode === "play" ? playMoves : mode === "explore" ? freeMoves : opening.moves).map(
+                {(mode === "play" ? playMoves : mode === "explore" ? freeMoves : mode === "practice" && practiceFree ? practiceMoves : opening.moves).map(
                   (move, index) => (
                     <button
                       key={`${index}-${move}`}
-                      className={`${index < (mode === "practice" ? practicePly : ply) && mode !== "explore" ? "played" : ""} ${index === (mode === "practice" ? practicePly : ply) - 1 && mode !== "explore" ? "current" : ""}`}
+                      className={`${index < (mode === "practice" ? practiceFree ? practiceMoves.length : practicePly : ply) && mode !== "explore" ? "played" : ""} ${index === (mode === "practice" ? practiceFree ? practiceMoves.length : practicePly : ply) - 1 && mode !== "explore" ? "current" : ""}`}
                       onClick={() => {
                         if (mode === "learn") {
                           setPly(index + 1);
@@ -2225,7 +2308,7 @@ function App() {
                       {index % 2 === 0 && (
                         <small>{Math.floor(index / 2) + 1}.</small>
                       )}
-                      {mode === "practice" &&
+                      {mode === "practice" && !practiceFree &&
                       index >= practicePly &&
                       !(showHint && index === practicePly)
                         ? "•••"
@@ -2239,7 +2322,7 @@ function App() {
                   <Copy size={13} />{" "}
                   {copied
                     ? "Copied"
-                    : mode === "explore" || mode === "play"
+                    : mode === "explore" || mode === "play" || mode === "practice" && practiceFree
                       ? "Copy moves"
                       : "Copy PGN"}
                 </button>
@@ -2248,15 +2331,17 @@ function App() {
             {mode === "practice" && (
               <div className="practice-feedback-wrap">
               <div className="practice-score">
-                <span>{PRACTICE_STYLES.find((item) => item.id === practiceStyle)?.title}</span>
-                <strong>{practiceMistakes === 0 ? "Perfect so far" : `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}`}</strong>
+                <span>{practiceFree ? "Free practice" : PRACTICE_STYLES.find((item) => item.id === practiceStyle)?.title}</span>
+                <strong>{practiceFree ? recognizedOpening?.name || "New position" : practiceMistakes === 0 ? "Perfect so far" : `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}`}</strong>
               </div>
               <div
                 className={`feedback ${practiceFeedback.includes("outside") ? "error" : ""}`}
                 aria-live="polite"
               >
                 {practiceFeedback ||
-                  (practicePly >= opening.moves.length
+                  (practiceFree
+                    ? recognizedOpening ? `You are playing ${recognizedOpening.name}.` : "Play any legal move. The opening name will update when recognized."
+                    : practicePly >= opening.moves.length
                     ? "Line complete!"
                     : showHint
                       ? `Find ${opening.moves[practicePly] || "the next move"} on the board.`
@@ -2323,13 +2408,13 @@ function App() {
         <div className="focus-board-overlay" role="dialog" aria-modal="true" aria-label="Large chess board">
           <div className="focus-board-stage">
             <div className="focus-board-header">
-              <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : opening.name}</strong></div>
+              <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
               <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{["moss", "wood", "slate"].map((theme) => <button key={theme} aria-label={`${theme} board`} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
             <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
             <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} /></div>
             <PlayerRail color={orientation} active={game.turn() === orientation} label={mode === "play" && playSide === orientation ? "You" : orientation === "w" ? "White" : "Black"} detail={mode === "practice" ? `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}` : "Playing now"} />
-            <div className="focus-board-footer"><span>{game.isCheck() ? "Check · " : ""}{game.turn() === "w" ? "White" : "Black"} to move</span><span>{mode === "practice" ? `${practicePly}/${opening.moves.length} moves` : `${displayedMoves.length} moves played`}</span></div>
+            <div className="focus-board-footer"><span>{game.isCheck() ? "Check · " : ""}{game.turn() === "w" ? "White" : "Black"} to move</span><span>{mode === "practice" && !practiceFree ? `${practicePly}/${opening.moves.length} moves` : `${displayedMoves.length} moves played`}</span></div>
           </div>
         </div>
       )}

@@ -74,10 +74,17 @@ try {
   await page.getByRole("heading", { name: "Welcome, Test Player." }).waitFor();
   assert.equal(await page.locator(".account-stats > div").count(), 4);
   assert.equal(await page.locator(".profile-theme-picker button").count(), 3);
-  await page.getByLabel("Display name").fill("Test Strategist");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByLabel("Full name").fill("Test Strategist");
+  await page.getByLabel("Country").fill("Iran");
+  await page.getByLabel("FIDE rating").fill("1820");
+  await page.getByLabel("Chess title").selectOption("CM");
+  await page.getByLabel("Playing level").selectOption("Club player");
+  await page.getByLabel("Favorite opening").fill("Sicilian Defense");
+  await page.getByLabel("Short chess bio").fill("Building a practical tournament repertoire.");
+  await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByRole("heading", { name: "Welcome, Test Strategist." }).waitFor();
   await page.getByText("Profile updated.").waitFor();
+  assert.match(await page.locator(".player-identity").innerText(), /Iran.*CM.*FIDE 1820/s);
   await page.screenshot({ path: resolve(output, "profile.png"), fullPage: true });
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
   assert.match(await page.locator(".premium-account").innerText(), /Standard account/);
@@ -159,7 +166,8 @@ try {
   assert.equal(await page.getByRole("tab", { name: "Play" }).getAttribute("aria-selected"), "true");
 
   await page.getByRole("button", { name: "Learn the basics" }).click();
-  assert.equal(await page.locator(".lesson-card").count(), 6);
+  assert.equal(await page.locator(".lesson-card").count(), 7);
+  assert.equal(await page.getByRole("button", { name: /Piece value and trades/ }).count(), 1);
   assert.equal(await page.locator(".study-panel").count(), 0);
   assert.equal(await page.locator(".thinking-habit").count(), 4);
   assert.equal(await page.locator(".basics-drill").count(), 1);
@@ -172,7 +180,7 @@ try {
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
   await page.locator(".checkpoint-options button").nth(1).click();
   await page.getByText("Passed", { exact: true }).waitFor();
-  assert.match(await page.locator(".basics-progress-card").innerText(), /1 of 6 complete/);
+  assert.match(await page.locator(".basics-progress-card").innerText(), /1 of 7 complete/);
   await page.screenshot({
     path: resolve(output, "basics.png"),
     fullPage: true,
@@ -235,7 +243,13 @@ try {
   assert.equal(await page.locator(".legal-dot").count(), 0);
   await page.locator('.board-wrap [aria-label="d2 white pawn"]').click();
   await page.locator('.board-wrap [aria-label="d4"]').click();
-  assert.match(await page.locator(".practice-score").innerText(), /1 miss/);
+  await page.getByText(/Free practice is active/).waitFor();
+  assert.match(await page.locator(".moves-heading").innerText(), /Your free practice/);
+  assert.match(await page.locator(".study-opening p").innerText(), /Opening updated|recognition updates/);
+  await page.locator('.board-wrap [aria-label="d7 black pawn"]').click();
+  await page.locator('.board-wrap [aria-label="d5"]').click();
+  assert.equal(await page.locator(".move-list button").count(), 2);
+  await page.screenshot({ path: resolve(output, "practice-free.png"), fullPage: true });
   await page.getByRole("button", { name: /Guided line/ }).click();
   await page.getByRole("button", { name: "Hint", exact: true }).click();
   assert.ok(
