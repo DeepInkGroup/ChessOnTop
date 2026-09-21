@@ -303,6 +303,12 @@ const PIECE_GUIDE = [
   { name: "Knight", code: "N", movement: "An L shape; it can jump" },
   { name: "Pawn", code: "P", movement: "Forward; captures diagonally" },
 ];
+const BEGINNER_ROUTINE = [
+  { icon: ShieldCheck, title: "Check for danger", detail: "Is your king safe, and what is your opponent threatening?" },
+  { icon: Target, title: "Look for forcing moves", detail: "Scan checks, captures, and direct threats first." },
+  { icon: Eye, title: "Find loose pieces", detail: "Notice every piece that is attacked or left undefended." },
+  { icon: Compass, title: "Improve your position", detail: "If there is no tactic, activate your least useful piece." },
+];
 const pieceCode = { k: "K", q: "Q", r: "R", b: "B", n: "N", p: "P" };
 const pieceName = {
   k: "king",
@@ -480,6 +486,9 @@ function App() {
   const [collectionTab, setCollectionTab] = useState("saved");
   const [activeLesson, setActiveLesson] = useState(0);
   const [basicAnswers, setBasicAnswers] = useState({});
+  const [coordinateTarget, setCoordinateTarget] = useState("e4");
+  const [coordinateScore, setCoordinateScore] = useState({ correct: 0, tries: 0 });
+  const [coordinateFeedback, setCoordinateFeedback] = useState("Find the square before you click.");
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
@@ -904,8 +913,24 @@ function App() {
     setNewBook({ title: "", author: "", focus: "", level: "Intermediate" });
   }
 
+  function chooseCoordinate(square) {
+    const correct = square === coordinateTarget;
+    setCoordinateScore((current) => ({
+      correct: current.correct + (correct ? 1 : 0),
+      tries: current.tries + 1,
+    }));
+    if (!correct) {
+      setCoordinateFeedback(`${square} is not it. Keep looking for ${coordinateTarget}.`);
+      return;
+    }
+    const nextSquares = ["c6", "f2", "b7", "g5", "a3", "h6", "d8", "e1"];
+    const next = nextSquares[coordinateScore.correct % nextSquares.length];
+    setCoordinateFeedback(`Correct — that was ${coordinateTarget}. Now find ${next}.`);
+    setCoordinateTarget(next);
+  }
+
   return (
-    <div className={`app-shell ${mode === "play" ? "play-mode" : ""} ${["books", "account", "admin"].includes(view) ? "wide-mode" : ""}`}>
+    <div className={`app-shell ${mode === "play" ? "play-mode" : ""} ${["basics", "books", "account", "admin"].includes(view) ? "wide-mode" : ""}`}>
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div
           className="brand"
@@ -939,11 +964,6 @@ function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-foot">
-            <span className="online-dot" /> A calmer way to study chess
-          </div>
-        </div>
       </aside>
 
       {mobileMenuOpen && (
@@ -1168,10 +1188,7 @@ function App() {
                       setMode("explore");
                       setFreeMoves([]);
                       setSelectedSquare(null);
-                      if (window.innerWidth < 1050)
-                        document
-                          .getElementById("study-panel")
-                          ?.scrollIntoView({ behavior: "smooth" });
+                      setBoardFocus(true);
                     }}
                   >
                     Try the board <ArrowRight size={16} />
@@ -1274,6 +1291,54 @@ function App() {
                     </button>
                   </div>
                 </section>
+                <div className="basics-lab">
+                  <section className="coordinate-trainer">
+                    <div className="basics-tool-heading">
+                      <div>
+                        <span className="eyebrow dark">BOARD VISION</span>
+                        <h2>Find <strong>{coordinateTarget}</strong></h2>
+                      </div>
+                      <span className="coordinate-score">{coordinateScore.correct} correct · {coordinateScore.tries} tries</span>
+                    </div>
+                    <div className="coordinate-board" role="group" aria-label={`Find square ${coordinateTarget}`}>
+                      {[8, 7, 6, 5, 4, 3, 2, 1].flatMap((rank, rowIndex) =>
+                        files.map((file, columnIndex) => {
+                          const square = `${file}${rank}`;
+                          return (
+                            <button
+                              type="button"
+                              key={square}
+                              className={(rowIndex + columnIndex) % 2 === 0 ? "light" : "dark"}
+                              aria-label={`Square ${square}`}
+                              onClick={() => chooseCoordinate(square)}
+                            >
+                              {columnIndex === 0 && <span className="coordinate-rank">{rank}</span>}
+                              {rowIndex === 7 && <span className="coordinate-file">{file}</span>}
+                            </button>
+                          );
+                        }),
+                      )}
+                    </div>
+                    <p className="coordinate-feedback" aria-live="polite">{coordinateFeedback}</p>
+                  </section>
+                  <section className="thinking-routine">
+                    <div className="basics-tool-heading">
+                      <div>
+                        <span className="eyebrow dark">BEFORE EVERY MOVE</span>
+                        <h2>Your thinking routine</h2>
+                      </div>
+                    </div>
+                    <p className="thinking-intro">Use this quick scan in every practice game until it becomes automatic.</p>
+                    <div className="thinking-habits">
+                      {BEGINNER_ROUTINE.map(({ icon: HabitIcon, title: habitTitle, detail }, index) => (
+                        <div className="thinking-habit" key={habitTitle}>
+                          <span><HabitIcon size={17} /></span>
+                          <div><small>STEP {index + 1}</small><strong>{habitTitle}</strong><p>{detail}</p></div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
               </>
             )}
 
@@ -1364,7 +1429,6 @@ function App() {
                       {authError && <div className="auth-error" role="alert">{authError}</div>}
                       <button className="auth-submit" type="submit">{authMode === "signin" ? <LogIn size={17} /> : <UserPlus size={17} />}{authMode === "signin" ? "Sign in" : "Create my account"}<ArrowRight size={16} /></button>
                     </form>
-                    <div className="admin-login-note"><ShieldCheck size={16} /><span><strong>Administrator access</strong>Use the administrator credentials on the same sign in form.</span></div>
                   </div>
                 </section>
               ) : (
@@ -1612,7 +1676,7 @@ function App() {
             </div>
           </main>
 
-          {!(["books", "account", "admin"].includes(view)) && <aside className="study-panel" id="study-panel">
+          {!(["basics", "books", "account", "admin"].includes(view)) && <aside className="study-panel" id="study-panel">
             <div className="study-top">
               <div>
                 <span className="eyebrow dark">YOUR STUDY SPACE</span>

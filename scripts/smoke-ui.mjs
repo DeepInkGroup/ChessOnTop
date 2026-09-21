@@ -112,6 +112,10 @@ try {
 
   await page.getByRole("button", { name: "Learn the basics" }).click();
   assert.equal(await page.locator(".lesson-card").count(), 6);
+  assert.equal(await page.locator(".study-panel").count(), 0);
+  assert.equal(await page.locator(".thinking-habit").count(), 4);
+  await page.getByRole("button", { name: "Square e4" }).click();
+  assert.match(await page.locator(".coordinate-score").innerText(), /1 correct · 1 tries/);
   await page.getByRole("button", { name: /Meet the pieces/ }).click();
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
   await page.locator(".checkpoint-options button").nth(1).click();
@@ -121,6 +125,7 @@ try {
     path: resolve(output, "basics.png"),
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Overview" }).click();
   await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
   await page.locator('.board-wrap [aria-label="e4"]').click();
   assert.ok((await page.locator(".move-list").innerText()).includes("e4"));
@@ -248,6 +253,7 @@ try {
   await mobile.getByRole("button", { name: "Open menu" }).click();
   await mobile.getByRole("button", { name: "Learn the basics" }).click();
   await mobile.waitForTimeout(320);
+  assert.equal(await mobile.locator(".study-panel").count(), 0);
   await mobile.screenshot({
     path: resolve(output, "basics-mobile.png"),
     fullPage: true,
