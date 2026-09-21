@@ -319,6 +319,13 @@ const BEGINNER_ROUTINE = [
   { icon: Eye, title: "Find loose pieces", detail: "Notice every piece that is attacked or left undefended." },
   { icon: Compass, title: "Improve your position", detail: "If there is no tactic, activate your least useful piece." },
 ];
+const BASICS_DRILLS = [
+  { question: "Which first move helps White control the center?", choices: ["a4", "e4", "h3"], answer: 1, note: "e4 claims central space and opens lines for the queen and bishop." },
+  { question: "Which piece can jump over another piece?", choices: ["Knight", "Bishop", "Rook"], answer: 0, note: "The knight is the only piece that can jump over occupied squares." },
+  { question: "What should you check before planning your move?", choices: ["The clock color", "Your opponent’s threat", "Your captured pieces"], answer: 1, note: "Start with your opponent’s last move and identify every immediate threat." },
+  { question: "What is usually the safest early home for your king?", choices: ["The center", "After castling", "In front of a pawn"], answer: 1, note: "Castling usually moves the king away from the open center and activates a rook." },
+  { question: "A fork is a move that…", choices: ["Attacks two targets", "Trades every pawn", "Ends in a draw"], answer: 0, note: "A fork creates two or more threats with one piece." },
+];
 const pieceCode = { k: "K", q: "Q", r: "R", b: "B", n: "N", p: "P" };
 const pieceName = {
   k: "king",
@@ -501,6 +508,7 @@ function App() {
   const [coordinateTarget, setCoordinateTarget] = useState("e4");
   const [coordinateScore, setCoordinateScore] = useState({ correct: 0, tries: 0 });
   const [coordinateFeedback, setCoordinateFeedback] = useState("Find the square before you click.");
+  const [basicsDrill, setBasicsDrill] = useState({ index: 0, choice: null, score: 0 });
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
@@ -516,7 +524,7 @@ function App() {
   const [showHint, setShowHint] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [orientation, setOrientation] = useState("w");
-  const [boardTheme, setBoardTheme] = useState("moss");
+  const [boardTheme, setBoardTheme] = useStoredValue("cot-board-theme", "moss");
   const [boardFocus, setBoardFocus] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -530,6 +538,7 @@ function App() {
   const [books, setBooks] = useStoredValue("openfile-books-v2", DEFAULT_BOOKS);
   const [articles, setArticles] = useStoredValue("cot-articles", []);
   const [siteNotice, setSiteNotice] = useStoredValue("openfile-site-notice", "");
+  const [siteSettings, setSiteSettings] = useStoredValue("cot-site-settings", { announcementVisible: true, registrationOpen: true });
   const [currentUser, setCurrentUser] = useState(() => readStored("openfile-session", null, sessionStorage));
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -540,6 +549,8 @@ function App() {
   const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", content: "" });
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
   const visibleBooks = books.filter((book) => book.visible !== false);
   const visibleArticles = articles.filter((article) => article.visible !== false);
 
@@ -547,6 +558,10 @@ function App() {
     if (currentUser) sessionStorage.setItem("openfile-session", JSON.stringify(currentUser));
     else sessionStorage.removeItem("openfile-session");
   }, [currentUser]);
+  useEffect(() => {
+    setProfileName(currentUser?.name || "");
+    setProfileMessage("");
+  }, [currentUser?.id]);
 
   const opening = OPENING_BY_ID.get(selectedId) || DEFAULT_OPENING;
   const notes = familyNotes.find((note) =>
@@ -560,6 +575,7 @@ function App() {
     ],
   };
   const lesson = BASICS_LESSONS[activeLesson];
+  const drill = BASICS_DRILLS[basicsDrill.index];
   const displayedMoves =
     mode === "play"
       ? playMoves
@@ -899,6 +915,10 @@ function App() {
       return;
     }
     if (authMode === "signup") {
+      if (siteSettings.registrationOpen === false) {
+        setAuthError("New account registration is currently paused.");
+        return;
+      }
       if (authForm.name.trim().length < 2 || !email.includes("@") || password.length < 8) {
         setAuthError("Use your name, a valid email, and at least 8 password characters.");
         return;
@@ -930,6 +950,32 @@ function App() {
     setCurrentUser(null);
     setAuthMode("signin");
     setView("account");
+  }
+
+  function saveProfile(event) {
+    event.preventDefault();
+    const name = profileName.trim();
+    if (name.length < 2 || currentUser?.role !== "user") return;
+    setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, name } : user));
+    setCurrentUser((current) => ({ ...current, name }));
+    setProfileMessage("Profile updated.");
+  }
+
+  function exportStudioContent() {
+    const snapshot = {
+      product: "CO.T / ChessOn.Top",
+      exportedAt: new Date().toISOString(),
+      books,
+      articles,
+      announcement: siteNotice,
+      settings: siteSettings,
+    };
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" }));
+    link.href = url;
+    link.download = `cot-content-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function addBook(event) {
@@ -1055,7 +1101,7 @@ function App() {
             </button>
           </div>
         </header>
-        {siteNotice && <div className="site-notice"><Sparkles size={14} /> {siteNotice}</div>}
+        {siteNotice && siteSettings.announcementVisible !== false && <div className="site-notice"><Sparkles size={14} /> {siteNotice}</div>}
 
         <div className="workspace">
           <main className="content">
@@ -1383,6 +1429,20 @@ function App() {
                       ))}
                     </div>
                   </section>
+                  <section className="basics-drill">
+                    <div className="drill-visual" aria-hidden="true"><span>3</span><Timer size={25} /><small>MINUTE<br />SPRINT</small></div>
+                    <div className="drill-content">
+                      <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>Turn ideas into quick recall</h2></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
+                      <div className="drill-progress" aria-label={`Question ${basicsDrill.index + 1} of ${BASICS_DRILLS.length}`}>{BASICS_DRILLS.map((_, index) => <span key={index} className={index <= basicsDrill.index ? "active" : ""} />)}</div>
+                      <h3>{drill.question}</h3>
+                      <div className="drill-options">
+                        {drill.choices.map((choice, index) => (
+                          <button key={choice} disabled={basicsDrill.choice !== null} className={basicsDrill.choice === index ? index === drill.answer ? "correct" : "wrong" : basicsDrill.choice !== null && index === drill.answer ? "correct" : ""} onClick={() => setBasicsDrill((current) => ({ ...current, choice: index, score: current.score + (index === drill.answer ? 1 : 0) }))}><span>{String.fromCharCode(65 + index)}</span>{choice}</button>
+                        ))}
+                      </div>
+                      {basicsDrill.choice !== null && <div className={`drill-result ${basicsDrill.choice === drill.answer ? "correct" : ""}`}><span>{basicsDrill.choice === drill.answer ? <Check size={16} /> : <X size={16} />}</span><p><strong>{basicsDrill.choice === drill.answer ? "Correct." : "Keep this one in mind."}</strong> {drill.note}</p><button onClick={() => setBasicsDrill((current) => ({ ...current, index: (current.index + 1) % BASICS_DRILLS.length, choice: null }))}>Next question <ArrowRight size={15} /></button></div>}
+                    </div>
+                  </section>
                 </div>
               </>
             )}
@@ -1499,7 +1559,7 @@ function App() {
                     <p>{authMode === "signin" ? "Sign in to continue your chess journey." : "Create your account and start building a repertoire."}</p>
                     <div className="auth-tabs">
                       <button className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setAuthError(""); }}>Sign in</button>
-                      <button className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setAuthError(""); }}>Create account</button>
+                      <button disabled={siteSettings.registrationOpen === false} className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setAuthError(""); }}>{siteSettings.registrationOpen === false ? "Registration paused" : "Create account"}</button>
                     </div>
                     <form onSubmit={submitAuth}>
                       {authMode === "signup" && <label>Full name<input aria-label="Full name" value={authForm.name} onChange={(event) => updateAuthField("name", event.target.value)} placeholder="Your name" autoComplete="name" /></label>}
@@ -1512,9 +1572,31 @@ function App() {
                 </section>
               ) : (
                 <section className="account-page">
-                  <div className="account-hero"><span className="account-avatar">{currentUser.name[0]}</span><div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email} · {currentUser.premium ? "Premium member" : "Standard member"}</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
-                  <div className="account-stats"><div><Bookmark size={20} /><strong>{favorites.length}</strong><span>Saved lines</span></div><div><Trophy size={20} /><strong>{completed.length}</strong><span>Mastered</span></div><div><Library size={20} /><strong>{readingList.length}</strong><span>Books saved</span></div></div>
-                  <div className="account-actions"><button onClick={() => chooseView("practice")}><Target size={20} /><span><strong>Continue practicing</strong><small>Train one of your opening lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("collection")}><Bookmark size={20} /><span><strong>Open your repertoire</strong><small>Review saved and mastered lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("books")}><Library size={20} /><span><strong>Visit your reading room</strong><small>Find your saved chess books</small></span><ArrowRight size={17} /></button></div>
+                  <div className="account-hero">
+                    <span className="account-avatar">{currentUser.name[0]}</span>
+                    <div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email}</p><span className={`member-pill ${currentUser.premium ? "premium" : ""}`}>{currentUser.premium ? <Sparkles size={12} /> : <User size={12} />}{currentUser.premium ? "Premium member" : "Standard member"}</span></div>
+                    <button onClick={signOut}><LogOut size={16} /> Sign out</button>
+                  </div>
+                  <div className="account-stats"><div><Bookmark size={20} /><strong>{favorites.length}</strong><span>Saved lines</span></div><div><Trophy size={20} /><strong>{completed.length}</strong><span>Mastered</span></div><div><GraduationCap size={20} /><strong>{basicCompleted.length}/{BASICS_LESSONS.length}</strong><span>Basics complete</span></div><div><Library size={20} /><strong>{readingList.length}</strong><span>Books saved</span></div></div>
+                  <div className="profile-grid">
+                    <section className="profile-progress">
+                      <div className="profile-section-heading"><span><Target size={19} /></span><div><span className="eyebrow dark">LEARNING PULSE</span><h2>Your progress</h2></div></div>
+                      <div className="profile-progress-row"><div><strong>Chess foundations</strong><span>{basicCompleted.length} of {BASICS_LESSONS.length} lessons</span></div><em>{Math.round((basicCompleted.length / BASICS_LESSONS.length) * 100)}%</em><div><span style={{ width: `${(basicCompleted.length / BASICS_LESSONS.length) * 100}%` }} /></div></div>
+                      <div className="profile-progress-row"><div><strong>Opening practice</strong><span>{completed.length} mastered lines</span></div><em>{favorites.length ? Math.min(100, Math.round((completed.length / favorites.length) * 100)) : 0}%</em><div><span style={{ width: `${favorites.length ? Math.min(100, (completed.length / favorites.length) * 100) : 0}%` }} /></div></div>
+                      <button onClick={() => chooseView(basicCompleted.length < BASICS_LESSONS.length ? "basics" : "practice")}>{basicCompleted.length < BASICS_LESSONS.length ? "Continue foundations" : "Start a practice line"}<ArrowRight size={15} /></button>
+                    </section>
+                    <section className="profile-details">
+                      <div className="profile-section-heading"><span><User size={19} /></span><div><span className="eyebrow dark">ACCOUNT DETAILS</span><h2>Your profile</h2></div></div>
+                      <form onSubmit={saveProfile}><label>Display name<input aria-label="Display name" value={profileName} onChange={(event) => { setProfileName(event.target.value); setProfileMessage(""); }} /></label><label>Email address<input value={currentUser.email} disabled /></label><div className="profile-form-footer"><span aria-live="polite">{profileMessage}</span><button type="submit">Save changes</button></div></form>
+                    </section>
+                    <section className="profile-preferences">
+                      <div><span className="eyebrow dark">BOARD PREFERENCE</span><h2>Choose your board</h2><p>This color will be used across study, practice, and play.</p></div>
+                      <div className="profile-theme-picker">{["moss", "wood", "slate"].map((theme) => <button key={theme} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)}><span /><strong>{theme}</strong>{boardTheme === theme && <Check size={14} />}</button>)}</div>
+                    </section>
+                    <section className={`membership-card ${currentUser.premium ? "premium" : ""}`}><span>{currentUser.premium ? <Sparkles size={22} /> : <ShieldCheck size={22} />}</span><div><span className="eyebrow">MEMBERSHIP</span><h2>{currentUser.premium ? "Your reading room is unlocked." : "Standard player access"}</h2><p>{currentUser.premium ? "You can read every published book and save titles to your reading list." : "An administrator can grant Premium access to the complete book library."}</p></div><button onClick={() => chooseView(currentUser.premium ? "books" : "articles")}>{currentUser.premium ? "Browse books" : "Read articles"}<ArrowRight size={15} /></button></section>
+                  </div>
+                  <div className="profile-actions-heading"><span className="eyebrow dark">QUICK LINKS</span><h2>Pick up where you left off</h2></div>
+                  <div className="account-actions"><button onClick={() => chooseView("practice")}><Target size={20} /><span><strong>Continue practicing</strong><small>Train one of your opening lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("collection")}><Bookmark size={20} /><span><strong>Open your repertoire</strong><small>Review saved and mastered lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("books")}><Library size={20} /><span><strong>Visit your reading room</strong><small>Find your saved chess books</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("articles")}><Lightbulb size={20} /><span><strong>Read the journal</strong><small>Explore new chess ideas</small></span><ArrowRight size={17} /></button></div>
                 </section>
               )
             )}
@@ -1526,7 +1608,20 @@ function App() {
                 {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button className={`premium ${user.premium ? "active" : ""}`} onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, premium: !item.premium } : item))}><Sparkles size={15} />{user.premium ? "Premium" : "Make premium"}</button><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
                 {adminTab === "books" && <div className="admin-books"><form className="admin-book-form" onSubmit={addBook}><div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>New book</h2><p>Publish a complete readable book for Premium members.</p></div><label>Title<input required value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label><label>Author<input required value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label><label>Summary<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label><label>Level<select value={newBook.level} onChange={(event) => setNewBook((current) => ({ ...current, level: event.target.value }))}><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>All levels</option></select></label><label>Book content<textarea value={newBook.content} onChange={(event) => setNewBook((current) => ({ ...current, content: event.target.value }))} placeholder={"Write the book here. Use blank lines between chapters or sections.\n\nChapter 1 — The first idea..."} /></label><small className="editor-count">{newBook.content.length.toLocaleString()} characters</small><button className="primary-button" type="submit">Publish book <ArrowRight size={16} /></button></form><div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color}`}>{book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{book.content?.trim() ? " · Readable" : " · No content"}</small></span><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div></div>}
                 {adminTab === "articles" && <div className="admin-articles"><form className="admin-article-form" onSubmit={addArticle}><div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>New article</h2><p>Share a lesson, plan, or game idea with every reader.</p></div><label>Title<input required value={newArticle.title} onChange={(event) => setNewArticle((current) => ({ ...current, title: event.target.value }))} placeholder="Article title" /></label><div className="admin-form-row"><label>Author<input value={newArticle.author} onChange={(event) => setNewArticle((current) => ({ ...current, author: event.target.value }))} placeholder="CO.T Editorial" /></label><label>Category<select value={newArticle.category} onChange={(event) => setNewArticle((current) => ({ ...current, category: event.target.value }))}><option>Strategy</option><option>Openings</option><option>Tactics</option><option>Endgames</option><option>Mindset</option></select></label></div><label>Short summary<textarea className="summary-field" value={newArticle.summary} onChange={(event) => setNewArticle((current) => ({ ...current, summary: event.target.value }))} placeholder="A short introduction for the article card" maxLength={220} /></label><label>Article content<textarea required value={newArticle.content} onChange={(event) => setNewArticle((current) => ({ ...current, content: event.target.value }))} placeholder={"Write the full article here.\n\nUse blank lines to create readable paragraphs."} /></label><small className="editor-count">{newArticle.content.length.toLocaleString()} characters</small><button className="primary-button" type="submit">Publish article <ArrowRight size={16} /></button></form><div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span><Lightbulb size={17} /></span><div><strong>{article.title}</strong><small>{article.category} · {article.author}</small></div><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div></div>}
-                {adminTab === "settings" && <div className="admin-settings"><div><span className="eyebrow dark">STUDIO MESSAGE</span><h2>Announcement bar</h2><p>Publish a short message at the top of every page in this browser.</p><label>Announcement<textarea value={siteNotice} onChange={(event) => setSiteNotice(event.target.value)} placeholder="Example: New opening drills are available this week." maxLength={120} /></label><small>{siteNotice.length}/120 characters</small>{siteNotice && <button onClick={() => setSiteNotice("")}>Clear announcement</button>}</div><div className="settings-preview"><span>PREVIEW</span><div><Sparkles size={14} /> {siteNotice || "Your announcement will appear here."}</div></div></div>}
+                {adminTab === "settings" && <div className="admin-settings">
+                  <section className="settings-card announcement-settings">
+                    <div className="settings-card-heading"><span><Sparkles size={19} /></span><div><span className="eyebrow dark">STUDIO MESSAGE</span><h2>Announcement bar</h2><p>Share a short update across the studio.</p></div></div>
+                    <label>Announcement<textarea value={siteNotice} onChange={(event) => setSiteNotice(event.target.value)} placeholder="Example: New opening drills are available this week." maxLength={120} /></label>
+                    <div className="settings-field-footer"><small>{siteNotice.length}/120 characters</small>{siteNotice && <button className="settings-text-button" onClick={() => setSiteNotice("")}>Clear message</button>}</div>
+                    <div className="settings-toggle-row"><div><strong>Show announcement</strong><span>Display this message below the top navigation.</span></div><button role="switch" aria-label="Show announcement" aria-checked={siteSettings.announcementVisible !== false} className={`toggle-switch ${siteSettings.announcementVisible !== false ? "on" : ""}`} onClick={() => setSiteSettings((current) => ({ ...current, announcementVisible: current.announcementVisible === false }))}><span /></button></div>
+                    <div className="settings-preview"><span>LIVE PREVIEW</span><div className={siteSettings.announcementVisible === false ? "muted" : ""}><Sparkles size={14} /> {siteNotice || "Your announcement will appear here."}</div></div>
+                  </section>
+                  <div className="settings-stack">
+                    <section className="settings-card"><div className="settings-card-heading"><span><Users size={19} /></span><div><span className="eyebrow dark">ACCESS</span><h2>Account registration</h2></div></div><div className="settings-toggle-row"><div><strong>Allow new accounts</strong><span>Players can create a profile from the sign in page.</span></div><button role="switch" aria-label="Allow new accounts" aria-checked={siteSettings.registrationOpen !== false} className={`toggle-switch ${siteSettings.registrationOpen !== false ? "on" : ""}`} onClick={() => { setSiteSettings((current) => ({ ...current, registrationOpen: current.registrationOpen === false })); setAuthMode("signin"); }}><span /></button></div></section>
+                    <section className="settings-card"><div className="settings-card-heading"><span><FlipHorizontal size={19} /></span><div><span className="eyebrow dark">APPEARANCE</span><h2>Default board</h2><p>Choose the board color used for every player.</p></div></div><div className="settings-board-picker">{["moss", "wood", "slate"].map((theme) => <button key={theme} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} aria-label={`Use ${theme} board`}><span /><strong>{theme}</strong>{boardTheme === theme && <Check size={14} />}</button>)}</div></section>
+                    <section className="settings-card backup-card"><div className="settings-card-heading"><span><Copy size={19} /></span><div><span className="eyebrow dark">NEW · CONTENT BACKUP</span><h2>Export studio content</h2><p>Download books, articles, announcements, and settings as a JSON snapshot.</p></div></div><div className="backup-summary"><span><strong>{books.length}</strong> books</span><span><strong>{articles.length}</strong> articles</span><span><strong>1</strong> settings file</span></div><button className="settings-primary" onClick={exportStudioContent}><Copy size={15} /> Download snapshot</button></section>
+                  </div>
+                </div>}
               </section>
             )}
             {view !== "overview" && view !== "basics" && view !== "play" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
