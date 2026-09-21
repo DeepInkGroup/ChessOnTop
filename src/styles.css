@@ -1641,6 +1641,13 @@ button svg {
 .basics-intro button:hover {
   text-decoration: underline;
 }
+.basics-progress-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; margin-top: 10px; padding: 13px 15px; border: 1px solid #dfe8db; border-radius: 10px; background: #fff; }
+.basics-progress-copy span, .basics-progress-copy strong { display: block; }
+.basics-progress-copy span { color: #91a093; font-size: 8px; }
+.basics-progress-copy strong { margin-top: 2px; color: #38523d; font-size: 10px; }
+.basics-progress-track { height: 6px; overflow: hidden; border-radius: 8px; background: #e9eee5; }
+.basics-progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #88b56e, #c5e89c); transition: width .3s ease; }
+.basics-progress-percent { color: #5f805d; font-size: 10px; font-weight: 800; }
 .basics-section-heading {
   margin-top: 29px;
 }
@@ -1694,6 +1701,7 @@ button svg {
   right: 15px;
   color: #9bb29a;
 }
+.lesson-card-complete { position: absolute; right: 13px; bottom: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 10px; background: #d7ebc8; color: #4b7548; font-family: "DM Sans", sans-serif; font-size: 7px; font-weight: 800; text-transform: uppercase; }
 .lesson-detail {
   margin-top: 14px;
   padding: 24px;
@@ -1806,6 +1814,25 @@ button svg {
 .notation-tip strong {
   color: #456647;
 }
+.lesson-practice { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; margin-top: 12px; padding: 13px; border-radius: 9px; background: #274b3a; color: #edf6e8; }
+.lesson-practice > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: #cde9a8; color: #34573b; }
+.lesson-practice strong, .lesson-practice p { display: block; margin: 0; }
+.lesson-practice strong { font-size: 10px; }.lesson-practice p { margin-top: 3px; color: #b9cdbf; font-size: 8px; line-height: 1.4; }
+.lesson-practice button { display: flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid #ffffff24; border-radius: 7px; background: #ffffff10; color: #dff2cd; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.lesson-practice button:hover { background: #ffffff1c; }
+.lesson-checkpoint { margin-top: 14px; padding: 16px; border: 1px solid #e2e8de; border-radius: 10px; background: #fbfcfa; }
+.lesson-checkpoint.correct { border-color: #bed6aa; background: #f4faef; }
+.checkpoint-heading { display: flex; align-items: center; justify-content: space-between; }
+.checkpoint-passed { display: flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 10px; background: #d9edc9; color: #4b7548; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.lesson-checkpoint h3 { margin: 8px 0 11px; color: #334c39; font-size: 12px; }
+.checkpoint-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.checkpoint-options button { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 9px; border: 1px solid #dfe6dc; border-radius: 7px; background: #fff; color: #687b6a; font-size: 8px; text-align: left; }
+.checkpoint-options button > span { display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 5px; background: #edf2e9; color: #789078; font-size: 8px; font-weight: 800; }
+.checkpoint-options button svg { margin-left: auto; }
+.checkpoint-options button:hover { border-color: #aeca99; background: #f5f9f1; }
+.checkpoint-options button.correct { border-color: #9bc67e; background: #eaf6e0; color: #3e6b41; }
+.checkpoint-options button.wrong { border-color: #e0b5a6; background: #fff1ea; color: #925b49; }
+.checkpoint-feedback { margin: 9px 0 0; color: #9a604d; font-size: 8px; }
 .lesson-footer {
   border-top: 1px solid #edf0e9;
   padding-top: 16px;
@@ -2852,5 +2879,22 @@ button svg {
   }
   .lesson-detail {
     padding: 18px;
+  }
+  .basics-progress-card {
+    grid-template-columns: 1fr auto;
+  }
+  .basics-progress-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .lesson-practice {
+    grid-template-columns: 34px 1fr;
+  }
+  .lesson-practice button {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .checkpoint-options {
+    grid-template-columns: 1fr;
   }
 }

@@ -41,6 +41,7 @@ try {
     path: resolve(output, "desktop.png"),
     fullPage: true,
   });
+  assert.equal(await page.locator('.footer-links a[href="https://github.com/DeepInkGroup"]').count(), 1);
 
   await page.getByRole("button", { name: "Enlarge board" }).click();
   const focusBoard = page.getByRole("dialog", { name: "Large chess board" });
@@ -110,8 +111,12 @@ try {
   assert.equal(await page.getByRole("tab", { name: "Play" }).getAttribute("aria-selected"), "true");
 
   await page.getByRole("button", { name: "Learn the basics" }).click();
+  assert.equal(await page.locator(".lesson-card").count(), 6);
   await page.getByRole("button", { name: /Meet the pieces/ }).click();
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
+  await page.locator(".checkpoint-options button").nth(1).click();
+  await page.getByText("Passed", { exact: true }).waitFor();
+  assert.match(await page.locator(".basics-progress-card").innerText(), /1 of 6 complete/);
   await page.screenshot({
     path: resolve(output, "basics.png"),
     fullPage: true,

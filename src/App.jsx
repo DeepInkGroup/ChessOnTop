@@ -223,6 +223,8 @@ const BASICS_LESSONS = [
       "Checkmate means the king is in check and no legal move can save it.",
       "A game can end in a draw, including when a player has no legal move but is not in check.",
     ],
+    exercise: "Find the king on each side, then make a legal move that gives check.",
+    quiz: { question: "What must you do when your king is in check?", choices: ["Move any pawn", "Answer the check", "Offer a draw"], answer: 1 },
   },
   {
     title: "Meet the pieces",
@@ -235,6 +237,8 @@ const BASICS_LESSONS = [
       "The knight jumps in an L shape and can hop over other pieces.",
       "Pawns move forward, capture diagonally, and become stronger when they reach the far side.",
     ],
+    exercise: "Select every piece once and compare the legal move dots on the board.",
+    quiz: { question: "Which piece can jump over other pieces?", choices: ["Bishop", "Knight", "Rook"], answer: 1 },
   },
   {
     title: "Special moves",
@@ -247,6 +251,8 @@ const BASICS_LESSONS = [
       "En passant lets a pawn capture an adjacent pawn immediately after it advances two squares past it.",
       "A pawn reaching the last rank promotes to a queen, rook, bishop, or knight.",
     ],
+    exercise: "Clear the path between your king and rook, then try castling.",
+    quiz: { question: "When can a pawn use en passant?", choices: ["Any time", "Immediately after a two-square pawn move", "Only in check"], answer: 1 },
   },
   {
     title: "Opening principles",
@@ -259,6 +265,34 @@ const BASICS_LESSONS = [
       "Develop your knights and bishops instead of moving the same piece again and again.",
       "Keep your king safe. Castling early often connects your rooks and prepares the middlegame.",
     ],
+    exercise: "Play five moves while developing two pieces and controlling the center.",
+    quiz: { question: "Which is usually a good opening priority?", choices: ["Move one piece repeatedly", "Develop knights and bishops", "Push every rook pawn"], answer: 1 },
+  },
+  {
+    title: "Tactical patterns",
+    eyebrow: "05 · SPOT THE IDEA",
+    icon: Zap,
+    description: "Tactics are short forcing sequences. Learn the shapes and you will notice opportunities faster.",
+    points: [
+      "A fork attacks two or more pieces at the same time.",
+      "A pin stops a piece from moving because something more valuable sits behind it.",
+      "A skewer attacks a valuable piece first and wins the piece behind it after it moves.",
+    ],
+    exercise: "Place a knight near the center and look for two targets it can attack at once.",
+    quiz: { question: "What does a fork do?", choices: ["Attacks two targets", "Protects the king", "Trades queens"], answer: 0 },
+  },
+  {
+    title: "Endgame essentials",
+    eyebrow: "06 · FINISH WELL",
+    icon: Timer,
+    description: "With fewer pieces, the king becomes active and every pawn move carries more weight.",
+    points: [
+      "Bring your king toward the center when major attacking pieces have left the board.",
+      "Create and support passed pawns that have no enemy pawn blocking their path.",
+      "Use opposition to force the other king away from important squares.",
+    ],
+    exercise: "Trade pieces on the free board, then march your king toward the center.",
+    quiz: { question: "What changes for the king in an endgame?", choices: ["It stays hidden", "It becomes an active piece", "It cannot move"], answer: 1 },
   },
 ];
 const PIECE_GUIDE = [
@@ -445,6 +479,7 @@ function App() {
   const [visibleCount, setVisibleCount] = useState(12);
   const [collectionTab, setCollectionTab] = useState("saved");
   const [activeLesson, setActiveLesson] = useState(0);
+  const [basicAnswers, setBasicAnswers] = useState({});
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
@@ -469,6 +504,7 @@ function App() {
   const [favorites, setFavorites] = useStoredList("openfile-favorites");
   const [completed, setCompleted] = useStoredList("openfile-completed");
   const [readingList, setReadingList] = useStoredList("openfile-reading-list");
+  const [basicCompleted, setBasicCompleted] = useStoredList("openfile-basics-completed");
   const [users, setUsers] = useStoredValue("openfile-users", []);
   const [books, setBooks] = useStoredValue("openfile-books-v2", DEFAULT_BOOKS);
   const [siteNotice, setSiteNotice] = useStoredValue("openfile-site-notice", "");
@@ -1141,11 +1177,16 @@ function App() {
                     Try the board <ArrowRight size={16} />
                   </button>
                 </div>
+                <div className="basics-progress-card">
+                  <div className="basics-progress-copy"><span>{basicCompleted.length} of {BASICS_LESSONS.length} complete</span><strong>{basicCompleted.length === BASICS_LESSONS.length ? "Foundation complete" : "Your learning path"}</strong></div>
+                  <div className="basics-progress-track"><span style={{ width: `${(basicCompleted.length / BASICS_LESSONS.length) * 100}%` }} /></div>
+                  <span className="basics-progress-percent">{Math.round((basicCompleted.length / BASICS_LESSONS.length) * 100)}%</span>
+                </div>
                 <div className="section-heading basics-section-heading">
                   <div>
                     <span className="eyebrow dark">A LITTLE AT A TIME</span>
-                    <h2>Your first four lessons</h2>
-                    <p>Pick a lesson to get started.</p>
+                    <h2>Your first six lessons</h2>
+                    <p>Read the idea, try the board challenge, then pass the checkpoint.</p>
                   </div>
                 </div>
                 <div className="lesson-grid">
@@ -1162,7 +1203,7 @@ function App() {
                           <LessonIcon size={19} />
                         </span>
                         <strong>{item.title}</strong>
-                        <ArrowUpRight size={17} className="lesson-card-arrow" />
+                        {basicCompleted.includes(index) ? <span className="lesson-card-complete"><Check size={14} /> Done</span> : <ArrowUpRight size={17} className="lesson-card-arrow" />}
                       </button>
                     );
                   })}
@@ -1171,7 +1212,7 @@ function App() {
                   <div className="lesson-detail-top">
                     <span className="eyebrow dark">{lesson.eyebrow}</span>
                     <div className="lesson-number">
-                      {String(activeLesson + 1).padStart(2, "0")} / 04
+                      {String(activeLesson + 1).padStart(2, "0")} / {String(BASICS_LESSONS.length).padStart(2, "0")}
                     </div>
                   </div>
                   <h2>{lesson.title}</h2>
@@ -1205,14 +1246,26 @@ function App() {
                       toward the king’s side.
                     </p>
                   </div>
+                  <div className="lesson-practice">
+                    <span><Target size={18} /></span>
+                    <div><strong>Try it on the board</strong><p>{lesson.exercise}</p></div>
+                    <button onClick={() => { setMode("explore"); setFreeMoves([]); setSelectedSquare(null); setBoardFocus(true); }}>Open challenge board <Maximize2 size={15} /></button>
+                  </div>
+                  <div className={`lesson-checkpoint ${basicAnswers[activeLesson] === lesson.quiz.answer ? "correct" : ""}`}>
+                    <div className="checkpoint-heading"><span className="eyebrow dark">QUICK CHECKPOINT</span>{basicAnswers[activeLesson] === lesson.quiz.answer && <span className="checkpoint-passed"><Check size={13} /> Passed</span>}</div>
+                    <h3>{lesson.quiz.question}</h3>
+                    <div className="checkpoint-options">
+                      {lesson.quiz.choices.map((choice, index) => <button key={choice} className={basicAnswers[activeLesson] === index ? index === lesson.quiz.answer ? "correct" : "wrong" : ""} onClick={() => {
+                        setBasicAnswers((current) => ({ ...current, [activeLesson]: index }));
+                        if (index === lesson.quiz.answer) setBasicCompleted((current) => current.includes(activeLesson) ? current : [...current, activeLesson]);
+                      }}><span>{String.fromCharCode(65 + index)}</span>{choice}{basicAnswers[activeLesson] === index && (index === lesson.quiz.answer ? <Check size={14} /> : <X size={14} />)}</button>)}
+                    </div>
+                    {basicAnswers[activeLesson] !== undefined && basicAnswers[activeLesson] !== lesson.quiz.answer && <p className="checkpoint-feedback">Not quite. Review the lesson above and try again.</p>}
+                  </div>
                   <div className="lesson-footer">
-                    <span>Explore at your own pace.</span>
+                    <span>{basicCompleted.includes(activeLesson) ? "Lesson complete. Keep going." : "Pass the checkpoint to complete this lesson."}</span>
                     <button
-                      onClick={() =>
-                        activeLesson < BASICS_LESSONS.length - 1
-                          ? setActiveLesson(activeLesson + 1)
-                          : chooseView("openings")
-                      }
+                      onClick={() => activeLesson < BASICS_LESSONS.length - 1 ? setActiveLesson(activeLesson + 1) : chooseView("openings")}
                     >
                       {activeLesson < BASICS_LESSONS.length - 1
                         ? "Next lesson"
@@ -1551,6 +1604,9 @@ function App() {
                 </a>
                 <a href="https://www.chess.com/member/azomorodian" target="_blank" rel="noreferrer" aria-label="Azomorodian on Chess.com" title="Chess.com">
                   <span className="chesscom-icon" aria-hidden="true">♞</span>
+                </a>
+                <a href="https://github.com/DeepInkGroup" target="_blank" rel="noreferrer" aria-label="DeepInk Group on GitHub" title="GitHub">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.5v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2A11 11 0 0 1 12 6.8c1 0 2 .1 2.9.4 2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.4 5.7.4.4.8 1.1.8 2.2v2.5c0 .3.2.6.8.5A11.5 11.5 0 0 0 12 .7Z" /></svg>
                 </a>
               </div>
             </div>
