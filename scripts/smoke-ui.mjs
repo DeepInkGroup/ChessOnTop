@@ -35,14 +35,23 @@ try {
   });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.locator(".board-wrap .piece").first().waitFor();
   assert.match(await page.locator(".hero h1").innerText(), /Own the opening/);
+  assert.match(await page.locator(".brand").innerText(), /CO\.T/);
+  assert.equal(await page.locator(".study-panel").count(), 0);
   await page.screenshot({
     path: resolve(output, "desktop.png"),
     fullPage: true,
   });
   assert.equal(await page.locator('.footer-links a[href="https://github.com/DeepInkGroup"]').count(), 1);
 
+  await page.getByRole("button", { name: "Opening library" }).click();
+  await page.locator(".board-wrap .piece").first().waitFor();
+  assert.match(await page.locator(".opening-discovery").innerText(), /Opening explorer/i);
+  await page.getByLabel("Sort openings").selectOption("name");
+  await page.getByRole("button", { name: "Sicilian" }).click();
+  assert.ok((await page.locator(".opening-row").count()) > 0);
+  await page.getByRole("button", { name: "Any family" }).click();
+  await page.screenshot({ path: resolve(output, "opening-library.png"), fullPage: true });
   await page.getByRole("button", { name: "Enlarge board" }).click();
   const focusBoard = page.getByRole("dialog", { name: "Large chess board" });
   await focusBoard.waitFor();
@@ -77,21 +86,41 @@ try {
   assert.match(await page.locator(".admin-table").innerText(), /Premium/);
   await page.locator(".admin-tabs").getByRole("button", { name: "Books" }).click();
   await page.getByPlaceholder("Book title").fill("Winning Chess Habits");
-  await page.getByPlaceholder("Author").fill("Openfile Studio");
-  await page.getByRole("button", { name: "Add book" }).click();
+  await page.getByPlaceholder("Author").fill("CO.T Editorial");
+  await page.getByPlaceholder("What it teaches").fill("A practical guide to better decisions.");
+  await page.getByLabel("Book content").fill("Chapter 1 — Look first\n\nBefore every move, check your king and your opponent's threats.");
+  await page.getByRole("button", { name: "Publish book" }).click();
   await page.getByText("Winning Chess Habits", { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, "admin-books.png"), fullPage: true });
+  await page.locator(".admin-tabs").getByRole("button", { name: "Articles" }).click();
+  await page.getByPlaceholder("Article title").fill("Three questions before every move");
+  await page.getByPlaceholder("A short introduction for the article card").fill("Build a dependable thinking routine.");
+  await page.getByLabel("Article content").fill("Start with your opponent's last move.\n\nThen scan checks, captures, and threats.");
+  await page.getByRole("button", { name: "Publish article" }).click();
+  await page.getByText("Three questions before every move", { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, "admin-articles.png"), fullPage: true });
   await page.locator(".admin-tabs").getByRole("button", { name: "Settings" }).click();
   await page.getByLabel("Announcement").fill("New training week is live.");
   await page.getByText("New training week is live.").first().waitFor();
   await page.screenshot({ path: resolve(output, "admin.png"), fullPage: true });
   await page.locator(".admin-header").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
+  await page.getByRole("heading", { name: "Three questions before every move" }).waitFor();
+  await page.getByRole("button", { name: "Read article" }).click();
+  await page.getByRole("dialog", { name: /Reading Three questions/ }).waitFor();
+  await page.getByRole("button", { name: "Close article" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("textbox", { name: "Email or username" }).fill("player@example.com");
   await page.locator('input[aria-label="Password"]').fill("StrongPass9!");
   await page.locator(".auth-submit").click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
   await page.locator(".book-card h3", { hasText: "Winning Chess Habits" }).waitFor();
   assert.equal(await page.locator(".book-card").count(), 1);
+  await page.getByRole("button", { name: "Read book" }).click();
+  await page.getByRole("dialog", { name: /Reading Winning Chess Habits/ }).waitFor();
+  await page.getByRole("button", { name: "Close book" }).click();
   await page.getByRole("button", { name: "Overview" }).click();
+  assert.equal(await page.locator(".study-panel").count(), 0);
 
   await page.getByRole("button", { name: "Play a game" }).first().click();
   assert.equal(await page.getByRole("tab", { name: "Play" }).getAttribute("aria-selected"), "true");
@@ -125,7 +154,7 @@ try {
     path: resolve(output, "basics.png"),
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Overview" }).click();
+  await page.getByRole("button", { name: "Opening library" }).click();
   await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
   await page.locator('.board-wrap [aria-label="e4"]').click();
   assert.ok((await page.locator(".move-list").innerText()).includes("e4"));

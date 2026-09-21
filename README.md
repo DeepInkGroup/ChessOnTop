@@ -1,4 +1,4 @@
-# ChessOnTop
+# CO.T / ChessOn.Top
 
 Live site: [deepinkgroup.github.io/ChessOnTop](https://deepinkgroup.github.io/ChessOnTop/)
 

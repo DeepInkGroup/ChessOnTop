@@ -89,6 +89,16 @@ const FEATURED = featuredNames
       )[0],
   )
   .filter(Boolean);
+const POPULAR_FAMILIES = [
+  "Sicilian Defense",
+  "French Defense",
+  "Caro-Kann Defense",
+  "Ruy Lopez",
+  "Italian Game",
+  "Queen's Gambit",
+  "English Opening",
+  "King's Indian Defense",
+].filter((family) => OPENINGS.some((item) => item.family === family));
 const DEFAULT_OPENING = FEATURED[0] || OPENINGS[0];
 const ECO_GROUPS = [
   {
@@ -482,6 +492,8 @@ function App() {
   const [view, setView] = useState("overview");
   const [search, setSearch] = useState("");
   const [ecoFilter, setEcoFilter] = useState("All");
+  const [openingFamily, setOpeningFamily] = useState("All");
+  const [openingSort, setOpeningSort] = useState("recommended");
   const [visibleCount, setVisibleCount] = useState(12);
   const [collectionTab, setCollectionTab] = useState("saved");
   const [activeLesson, setActiveLesson] = useState(0);
@@ -516,6 +528,7 @@ function App() {
   const [basicCompleted, setBasicCompleted] = useStoredList("openfile-basics-completed");
   const [users, setUsers] = useStoredValue("openfile-users", []);
   const [books, setBooks] = useStoredValue("openfile-books-v2", DEFAULT_BOOKS);
+  const [articles, setArticles] = useStoredValue("cot-articles", []);
   const [siteNotice, setSiteNotice] = useStoredValue("openfile-site-notice", "");
   const [currentUser, setCurrentUser] = useState(() => readStored("openfile-session", null, sessionStorage));
   const [authMode, setAuthMode] = useState("signin");
@@ -523,8 +536,12 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [adminTab, setAdminTab] = useState("overview");
-  const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate" });
+  const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate", content: "" });
+  const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", content: "" });
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [selectedArticle, setSelectedArticle] = useState(null);
   const visibleBooks = books.filter((book) => book.visible !== false);
+  const visibleArticles = articles.filter((article) => article.visible !== false);
 
   useEffect(() => {
     if (currentUser) sessionStorage.setItem("openfile-session", JSON.stringify(currentUser));
@@ -566,8 +583,9 @@ function App() {
 
   const filteredOpenings = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return OPENINGS.filter((item) => {
+    const matches = OPENINGS.filter((item) => {
       if (ecoFilter !== "All" && item.eco[0] !== ecoFilter) return false;
+      if (openingFamily !== "All" && item.family !== openingFamily) return false;
       if (
         view === "collection" &&
         !(collectionTab === "saved"
@@ -580,11 +598,17 @@ function App() {
         `${item.name} ${item.eco} ${item.pgn}`.toLowerCase().includes(query)
       );
     });
-  }, [search, ecoFilter, view, collectionTab, favorites, completed]);
+    return [...matches].sort((a, b) => {
+      if (openingSort === "name") return a.name.localeCompare(b.name);
+      if (openingSort === "shortest") return a.moves.length - b.moves.length || a.name.localeCompare(b.name);
+      if (openingSort === "deepest") return b.moves.length - a.moves.length || a.name.localeCompare(b.name);
+      return 0;
+    });
+  }, [search, ecoFilter, openingFamily, openingSort, view, collectionTab, favorites, completed]);
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [search, ecoFilter, view, collectionTab]);
+  }, [search, ecoFilter, openingFamily, openingSort, view, collectionTab]);
   useEffect(() => {
     if (!playing || mode !== "learn") return;
     if (ply >= opening.moves.length) {
@@ -700,6 +724,7 @@ function App() {
   function chooseView(next) {
     if (next === "admin" && currentUser?.role !== "admin") next = "account";
     setView(next);
+    setBoardFocus(false);
     setMobileMenuOpen(false);
     if (next === "collection") {
       setEcoFilter("All");
@@ -830,6 +855,7 @@ function App() {
     play: "Play a game",
     collection: "My repertoire",
     books: "Chess books",
+    articles: "Chess articles",
     account: currentUser ? "Your account" : "Sign in",
     admin: "Admin panel",
   }[view];
@@ -840,6 +866,7 @@ function App() {
     { id: "practice", label: "Practice room", icon: Target },
     { id: "play", label: "Play a game", icon: Swords },
     { id: "books", label: "Books", icon: Library },
+    { id: "articles", label: "Articles", icon: Lightbulb },
     { id: "collection", label: "My repertoire", icon: Bookmark },
     { id: currentUser?.role === "admin" ? "admin" : "account", label: currentUser?.role === "admin" ? "Admin panel" : currentUser ? "My account" : "Sign in", icon: currentUser?.role === "admin" ? ShieldCheck : User },
   ];
@@ -910,7 +937,20 @@ function App() {
     if (!newBook.title.trim() || !newBook.author.trim()) return;
     const palette = ["sage", "navy", "clay", "cream", "berry", "gold"];
     setBooks((current) => [...current, { ...newBook, id: crypto.randomUUID(), mark: String(current.length + 1).padStart(2, "0"), color: palette[current.length % palette.length], visible: true }]);
-    setNewBook({ title: "", author: "", focus: "", level: "Intermediate" });
+    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", content: "" });
+  }
+
+  function addArticle(event) {
+    event.preventDefault();
+    if (!newArticle.title.trim() || !newArticle.content.trim()) return;
+    setArticles((current) => [{
+      ...newArticle,
+      id: crypto.randomUUID(),
+      author: newArticle.author.trim() || "CO.T Editorial",
+      published: new Date().toISOString(),
+      visible: true,
+    }, ...current]);
+    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", content: "" });
   }
 
   function chooseCoordinate(square) {
@@ -930,7 +970,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${mode === "play" ? "play-mode" : ""} ${["basics", "books", "account", "admin"].includes(view) ? "wide-mode" : ""}`}>
+    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) ? "wide-mode" : ""}`}>
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div
           className="brand"
@@ -942,9 +982,9 @@ function App() {
           <div className="brand-mark">♞</div>
           <div>
             <strong>
-              openfile<span>.</span>
+              CO<span>.</span>T
             </strong>
-            <small>CHESS STUDIO</small>
+            <small>CHESSON.TOP</small>
           </div>
         </div>
         <div className="side-section-label">WORKSPACE</div>
@@ -983,7 +1023,7 @@ function App() {
             >
               <Menu size={22} />
             </button>
-            <span>Workspace</span>
+            <span>ChessOn.Top</span>
             <ChevronRight size={15} />
             <strong>{title}</strong>
           </div>
@@ -996,7 +1036,11 @@ function App() {
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
-                  if (event.target.value) setView("openings");
+                  if (event.target.value) {
+                    setEcoFilter("All");
+                    setOpeningFamily("All");
+                    setView("openings");
+                  }
                 }}
               />
               {search && (
@@ -1139,6 +1183,7 @@ function App() {
                       className="collection-card"
                       onClick={() => {
                         setEcoFilter(group.letter);
+                        setOpeningFamily("All");
                         chooseView("openings");
                       }}
                     >
@@ -1373,7 +1418,7 @@ function App() {
                   {visibleBooks.map((book) => (
                     <article className="book-card" key={book.id}>
                       <div className={`book-cover ${book.color}`}>
-                        <span className="book-number">OPENFILE / {book.mark}</span>
+                        <span className="book-number">CO.T / {book.mark}</span>
                         <span className="book-piece">{Number(book.mark) % 2 ? "♞" : "♝"}</span>
                         <strong>{book.title}</strong>
                         <small>{book.author}</small>
@@ -1382,10 +1427,13 @@ function App() {
                         <span>{book.level}</span>
                         <h3>{book.title}</h3>
                         <p>{book.focus}</p>
-                        <button className={readingList.includes(book.id) ? "saved" : ""} onClick={() => setReadingList((current) => current.includes(book.id) ? current.filter((id) => id !== book.id) : [...current, book.id])}>
-                          {readingList.includes(book.id) ? <Check size={15} /> : <Bookmark size={15} />}
-                          {readingList.includes(book.id) ? "In reading list" : "Add to reading list"}
-                        </button>
+                        <div className="book-actions">
+                          {book.content?.trim() && <button className="read-book" onClick={() => setSelectedBook(book)}><BookOpen size={15} /> Read book</button>}
+                          <button className={readingList.includes(book.id) ? "saved" : ""} onClick={() => setReadingList((current) => current.includes(book.id) ? current.filter((id) => id !== book.id) : [...current, book.id])}>
+                            {readingList.includes(book.id) ? <Check size={15} /> : <Bookmark size={15} />}
+                            {readingList.includes(book.id) ? "Saved" : "Save"}
+                          </button>
+                        </div>
                       </div>
                     </article>
                   ))}
@@ -1406,11 +1454,42 @@ function App() {
                 {!currentUser ? <button className="primary-button" onClick={() => chooseView("account")}><LogIn size={16} /> Sign in to your account</button> : <div className="premium-account"><User size={16} /><span>Signed in as <strong>{currentUser.name}</strong> · Standard account</span></div>}
               </section>
             ))}
+            {view === "articles" && (
+              <>
+                <section className="articles-hero">
+                  <div>
+                    <span className="eyebrow">CO.T JOURNAL</span>
+                    <h1>Ideas for your<br /><em>next game.</em></h1>
+                    <p>Clear lessons on openings, strategy, tactics, and the habits that help chess ideas stick.</p>
+                  </div>
+                  <div className="articles-hero-mark" aria-hidden="true"><Lightbulb size={56} /><span>READ · THINK · PLAY</span></div>
+                </section>
+                <div className="articles-heading">
+                  <div><span className="eyebrow dark">LATEST STORIES</span><h2>The ChessOn.Top journal</h2></div>
+                  <span>{visibleArticles.length} {visibleArticles.length === 1 ? "article" : "articles"}</span>
+                </div>
+                {visibleArticles.length ? (
+                  <div className="articles-grid">
+                    {visibleArticles.map((article, index) => (
+                      <article className={`article-card article-tone-${index % 3}`} key={article.id}>
+                        <div className="article-card-top"><span>{article.category}</span><small>{new Date(article.published).toLocaleDateString()}</small></div>
+                        <div className="article-glyph" aria-hidden="true">{index % 2 ? "♝" : "♞"}</div>
+                        <h3>{article.title}</h3>
+                        <p>{article.summary || article.content.slice(0, 150)}</p>
+                        <div className="article-card-footer"><span>By {article.author}</span><button onClick={() => setSelectedArticle(article)}>Read article <ArrowUpRight size={15} /></button></div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="articles-empty"><Lightbulb size={34} /><h2>The journal is ready for its first story.</h2><p>Articles published from the Admin panel will appear here.</p></div>
+                )}
+              </>
+            )}
             {view === "account" && (
               !currentUser ? (
                 <section className="auth-page">
                   <div className="auth-visual">
-                    <div className="auth-visual-copy"><span className="eyebrow">WELCOME TO OPENFILE</span><h1>Your next move<br /><em>starts here.</em></h1><p>Save a repertoire, track mastered lines, and carry your reading list with you.</p></div>
+                    <div className="auth-visual-copy"><span className="eyebrow">WELCOME TO CHESSON.TOP</span><h1>Your next move<br /><em>starts here.</em></h1><p>Save a repertoire, track mastered lines, and carry your reading list with you.</p></div>
                     <div className="auth-position" aria-hidden="true"><span>♜</span><span>♞</span><span>♝</span><span>♛</span></div>
                   </div>
                   <div className="auth-card">
@@ -1441,15 +1520,16 @@ function App() {
             )}
             {view === "admin" && currentUser?.role === "admin" && (
               <section className="admin-page">
-                <div className="admin-header"><div><span className="eyebrow">OPENFILE CONTROL ROOM</span><h1>Admin panel</h1><p>Manage local accounts, the reading room, and studio settings.</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
-                <div className="admin-tabs">{[["overview", LayoutDashboard, "Overview"], ["users", Users, "Users"], ["books", Library, "Books"], ["settings", Settings, "Settings"]].map(([id, Icon, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}><Icon size={16} /> {label}</button>)}</div>
-                {adminTab === "overview" && <><div className="admin-metrics"><div><Users size={21} /><span>Registered users</span><strong>{users.length}</strong><small>{users.filter((user) => user.status !== "disabled").length} active</small></div><div><Library size={21} /><span>Library books</span><strong>{books.length}</strong><small>{visibleBooks.length} visible</small></div><div><BookOpen size={21} /><span>Opening lines</span><strong>{OPENINGS.length.toLocaleString()}</strong><small>ECO A–E</small></div><div><Trophy size={21} /><span>Mastered locally</span><strong>{completed.length}</strong><small>this browser</small></div></div><div className="admin-welcome"><ShieldCheck size={28} /><div><h2>Studio controls are ready.</h2><p>Use the tabs above to moderate accounts, curate the book shelf, and publish a message across the studio.</p></div></div></>}
+                <div className="admin-header"><div><span className="eyebrow">CO.T CONTROL ROOM</span><h1>Admin panel</h1><p>Manage accounts, books, articles, and studio settings.</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
+                <div className="admin-tabs">{[["overview", LayoutDashboard, "Overview"], ["users", Users, "Users"], ["books", Library, "Books"], ["articles", Lightbulb, "Articles"], ["settings", Settings, "Settings"]].map(([id, Icon, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}><Icon size={16} /> {label}</button>)}</div>
+                {adminTab === "overview" && <><div className="admin-metrics"><div><Users size={21} /><span>Registered users</span><strong>{users.length}</strong><small>{users.filter((user) => user.status !== "disabled").length} active</small></div><div><Library size={21} /><span>Library books</span><strong>{books.length}</strong><small>{visibleBooks.length} visible</small></div><div><Lightbulb size={21} /><span>Published articles</span><strong>{articles.length}</strong><small>{visibleArticles.length} visible</small></div><div><BookOpen size={21} /><span>Opening lines</span><strong>{OPENINGS.length.toLocaleString()}</strong><small>ECO A–E</small></div></div><div className="admin-welcome"><ShieldCheck size={28} /><div><h2>Studio controls are ready.</h2><p>Moderate accounts, write books and articles, and publish a message across the studio.</p></div></div></>}
                 {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button className={`premium ${user.premium ? "active" : ""}`} onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, premium: !item.premium } : item))}><Sparkles size={15} />{user.premium ? "Premium" : "Make premium"}</button><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
-                {adminTab === "books" && <div className="admin-books"><form className="admin-book-form" onSubmit={addBook}><div><span className="eyebrow dark">ADD TO THE SHELF</span><h2>New book</h2></div><label>Title<input value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label><label>Author<input value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label><label>Focus<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label><label>Level<select value={newBook.level} onChange={(event) => setNewBook((current) => ({ ...current, level: event.target.value }))}><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>All levels</option></select></label><button className="primary-button" type="submit">Add book <ArrowRight size={16} /></button></form><div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color}`}>{book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}</small></span><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div></div>}
+                {adminTab === "books" && <div className="admin-books"><form className="admin-book-form" onSubmit={addBook}><div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>New book</h2><p>Publish a complete readable book for Premium members.</p></div><label>Title<input required value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label><label>Author<input required value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label><label>Summary<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label><label>Level<select value={newBook.level} onChange={(event) => setNewBook((current) => ({ ...current, level: event.target.value }))}><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>All levels</option></select></label><label>Book content<textarea value={newBook.content} onChange={(event) => setNewBook((current) => ({ ...current, content: event.target.value }))} placeholder={"Write the book here. Use blank lines between chapters or sections.\n\nChapter 1 — The first idea..."} /></label><small className="editor-count">{newBook.content.length.toLocaleString()} characters</small><button className="primary-button" type="submit">Publish book <ArrowRight size={16} /></button></form><div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color}`}>{book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{book.content?.trim() ? " · Readable" : " · No content"}</small></span><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div></div>}
+                {adminTab === "articles" && <div className="admin-articles"><form className="admin-article-form" onSubmit={addArticle}><div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>New article</h2><p>Share a lesson, plan, or game idea with every reader.</p></div><label>Title<input required value={newArticle.title} onChange={(event) => setNewArticle((current) => ({ ...current, title: event.target.value }))} placeholder="Article title" /></label><div className="admin-form-row"><label>Author<input value={newArticle.author} onChange={(event) => setNewArticle((current) => ({ ...current, author: event.target.value }))} placeholder="CO.T Editorial" /></label><label>Category<select value={newArticle.category} onChange={(event) => setNewArticle((current) => ({ ...current, category: event.target.value }))}><option>Strategy</option><option>Openings</option><option>Tactics</option><option>Endgames</option><option>Mindset</option></select></label></div><label>Short summary<textarea className="summary-field" value={newArticle.summary} onChange={(event) => setNewArticle((current) => ({ ...current, summary: event.target.value }))} placeholder="A short introduction for the article card" maxLength={220} /></label><label>Article content<textarea required value={newArticle.content} onChange={(event) => setNewArticle((current) => ({ ...current, content: event.target.value }))} placeholder={"Write the full article here.\n\nUse blank lines to create readable paragraphs."} /></label><small className="editor-count">{newArticle.content.length.toLocaleString()} characters</small><button className="primary-button" type="submit">Publish article <ArrowRight size={16} /></button></form><div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span><Lightbulb size={17} /></span><div><strong>{article.title}</strong><small>{article.category} · {article.author}</small></div><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div></div>}
                 {adminTab === "settings" && <div className="admin-settings"><div><span className="eyebrow dark">STUDIO MESSAGE</span><h2>Announcement bar</h2><p>Publish a short message at the top of every page in this browser.</p><label>Announcement<textarea value={siteNotice} onChange={(event) => setSiteNotice(event.target.value)} placeholder="Example: New opening drills are available this week." maxLength={120} /></label><small>{siteNotice.length}/120 characters</small>{siteNotice && <button onClick={() => setSiteNotice("")}>Clear announcement</button>}</div><div className="settings-preview"><span>PREVIEW</span><div><Sparkles size={14} /> {siteNotice || "Your announcement will appear here."}</div></div></div>}
               </section>
             )}
-            {view !== "overview" && view !== "basics" && view !== "play" && view !== "books" && view !== "account" && view !== "admin" && (
+            {view !== "overview" && view !== "basics" && view !== "play" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
               <>
                 <div className="page-heading">
                   <div>
@@ -1474,6 +1554,25 @@ function App() {
                   </div>
                   <div className="heading-decoration">♞</div>
                 </div>
+                {view === "openings" && (
+                  <section className="opening-discovery">
+                    <div className="opening-discovery-copy">
+                      <span className="eyebrow">OPENING EXPLORER</span>
+                      <h2>Choose a path into the position.</h2>
+                      <p>Filter by ECO group or opening family, then study every move on the interactive board.</p>
+                    </div>
+                    <div className="opening-discovery-stats">
+                      <div><strong>{OPENINGS.length.toLocaleString()}</strong><span>verified lines</span></div>
+                      <div><strong>{POPULAR_FAMILIES.length}</strong><span>popular families</span></div>
+                      <div><strong>{favorites.length}</strong><span>saved lines</span></div>
+                    </div>
+                    <button onClick={() => {
+                      const item = OPENINGS[Math.floor(Math.random() * OPENINGS.length)];
+                      resetForOpening(item);
+                      setBoardFocus(true);
+                    }}><Sparkles size={16} /> Surprise me</button>
+                  </section>
+                )}
                 {view === "practice" && (
                   <><div className="practice-callout">
                     <span className="practice-callout-icon">
@@ -1527,15 +1626,13 @@ function App() {
                 {view !== "collection" && (
                   <div className="filter-panel">
                     <div className="filter-title">
-                      <span>Browse the collection</span>
-                      <small>
-                        {filteredOpenings.length.toLocaleString()} lines
-                      </small>
+                      <div><span>Browse the collection</span><small>{filteredOpenings.length.toLocaleString()} matching lines</small></div>
+                      <label className="opening-sort">Sort by<select aria-label="Sort openings" value={openingSort} onChange={(event) => setOpeningSort(event.target.value)}><option value="recommended">Recommended</option><option value="name">Name A–Z</option><option value="shortest">Shortest first</option><option value="deepest">Deepest first</option></select></label>
                     </div>
                     <div className="filter-chips">
                       <button
                         className={ecoFilter === "All" ? "active" : ""}
-                        onClick={() => setEcoFilter("All")}
+                        onClick={() => { setEcoFilter("All"); setOpeningFamily("All"); }}
                       >
                         All openings
                       </button>
@@ -1543,12 +1640,13 @@ function App() {
                         <button
                           key={group.letter}
                           className={ecoFilter === group.letter ? "active" : ""}
-                          onClick={() => setEcoFilter(group.letter)}
+                          onClick={() => { setEcoFilter(group.letter); setOpeningFamily("All"); }}
                         >
                           {group.letter} <span>{group.name}</span>
                         </button>
                       ))}
                     </div>
+                    {view === "openings" && <div className="family-filter" aria-label="Popular opening families"><span>Popular families</span><div><button className={openingFamily === "All" ? "active" : ""} onClick={() => setOpeningFamily("All")}>Any family</button>{POPULAR_FAMILIES.map((family) => <button key={family} className={openingFamily === family ? "active" : ""} onClick={() => { setOpeningFamily(family); setEcoFilter("All"); }}>{family.replace(" Defense", "").replace(" Opening", "")}</button>)}</div></div>}
                   </div>
                 )}
                 {view === "collection" && filteredOpenings.length === 0 && (
@@ -1589,7 +1687,9 @@ function App() {
                             : "EXPLORE & STUDY"}
                         </span>
                         <h2>
-                          {ecoFilter === "All"
+                          {openingFamily !== "All"
+                            ? openingFamily
+                            : ecoFilter === "All"
                             ? "All opening lines"
                             : `${ECO_GROUPS.find((group) => group.letter === ecoFilter)?.name}`}
                         </h2>
@@ -1613,11 +1713,12 @@ function App() {
                             <span className="opening-eco">{item.eco}</span>
                             <span className="opening-text">
                               <strong>{item.name}</strong>
-                              <small>{item.pgn}</small>
+                              <small><span>{item.family}</span>{item.pgn}</small>
                             </span>
                             <span className="move-count">
-                              {item.moves.length} moves
+                              <strong>{item.moves.length}</strong> moves
                             </span>
+                            <span className="study-line">Study line</span>
                             <ChevronRight size={18} />
                           </button>
                           <button
@@ -1661,7 +1762,7 @@ function App() {
               </>
             )}
             <div className="content-footer">
-              <span className="footer-brand">ChessOnTop. <strong>DeepInk Group</strong></span>
+              <span className="footer-brand">CO.T / <strong>ChessOn.Top</strong> · DeepInk Group</span>
               <div className="footer-links">
                 <a href="https://t.me/DeepInkGroup" target="_blank" rel="noreferrer" aria-label="DeepInk Group on Telegram" title="Telegram">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 3.1 18.4 20c-.2 1.2-.9 1.5-1.9.9l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9-8.1c.4-.4-.1-.6-.6-.3L5.9 13.7 1.1 12.2c-1-.3-1-1 .2-1.5L20 3.5c.9-.3 1.7.2 1.6-.4Z" /></svg>
@@ -1676,7 +1777,7 @@ function App() {
             </div>
           </main>
 
-          {!(["basics", "books", "account", "admin"].includes(view)) && <aside className="study-panel" id="study-panel">
+          {!(["overview", "basics", "books", "articles", "account", "admin"].includes(view)) && <aside className="study-panel" id="study-panel">
             <div className="study-top">
               <div>
                 <span className="eyebrow dark">YOUR STUDY SPACE</span>
@@ -1770,7 +1871,7 @@ function App() {
             <PlayerRail
               color={orientation === "w" ? "b" : "w"}
               active={game.turn() === (orientation === "w" ? "b" : "w")}
-              label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "Openfile Coach" : (orientation === "w" ? "Black" : "White")}
+              label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : (orientation === "w" ? "Black" : "White")}
               detail={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? difficulty === "focused" ? "Focused opponent" : "Casual opponent" : "Study side"}
             />
             <div className="board-wrap">
@@ -2103,14 +2204,34 @@ function App() {
           </aside>}
         </div>
       </div>
-      {boardFocus && !(["books", "account", "admin"].includes(view)) && (
+      {selectedBook && (
+        <div className="reader-overlay" role="dialog" aria-modal="true" aria-label={`Reading ${selectedBook.title}`} onClick={() => setSelectedBook(null)}>
+          <article className="reader-page" onClick={(event) => event.stopPropagation()}>
+            <button className="reader-close" aria-label="Close book" onClick={() => setSelectedBook(null)}><X size={20} /></button>
+            <header><span className="eyebrow dark">CO.T READING ROOM · {selectedBook.level}</span><h1>{selectedBook.title}</h1><p>By {selectedBook.author}</p></header>
+            {selectedBook.focus && <p className="reader-lead">{selectedBook.focus}</p>}
+            <div className="reader-content">{selectedBook.content.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => index === 0 ? <p className="reader-opening" key={index}>{paragraph}</p> : <p key={index}>{paragraph}</p>)}</div>
+          </article>
+        </div>
+      )}
+      {selectedArticle && (
+        <div className="reader-overlay" role="dialog" aria-modal="true" aria-label={`Reading ${selectedArticle.title}`} onClick={() => setSelectedArticle(null)}>
+          <article className="reader-page article-reader" onClick={(event) => event.stopPropagation()}>
+            <button className="reader-close" aria-label="Close article" onClick={() => setSelectedArticle(null)}><X size={20} /></button>
+            <header><span className="eyebrow dark">{selectedArticle.category} · {new Date(selectedArticle.published).toLocaleDateString()}</span><h1>{selectedArticle.title}</h1><p>By {selectedArticle.author}</p></header>
+            {selectedArticle.summary && <p className="reader-lead">{selectedArticle.summary}</p>}
+            <div className="reader-content">{selectedArticle.content.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => index === 0 ? <p className="reader-opening" key={index}>{paragraph}</p> : <p key={index}>{paragraph}</p>)}</div>
+          </article>
+        </div>
+      )}
+      {boardFocus && !(["overview", "books", "articles", "account", "admin"].includes(view)) && (
         <div className="focus-board-overlay" role="dialog" aria-modal="true" aria-label="Large chess board">
           <div className="focus-board-stage">
             <div className="focus-board-header">
               <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : opening.name}</strong></div>
               <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{["moss", "wood", "slate"].map((theme) => <button key={theme} aria-label={`${theme} board`} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
-            <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "Openfile Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
+            <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
             <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} /></div>
             <PlayerRail color={orientation} active={game.turn() === orientation} label={mode === "play" && playSide === orientation ? "You" : orientation === "w" ? "White" : "Black"} detail={mode === "practice" ? `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}` : "Playing now"} />
             <div className="focus-board-footer"><span>{game.isCheck() ? "Check · " : ""}{game.turn() === "w" ? "White" : "Black"} to move</span><span>{mode === "practice" ? `${practicePly}/${opening.moves.length} moves` : `${displayedMoves.length} moves played`}</span></div>
