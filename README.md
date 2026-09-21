@@ -4,9 +4,9 @@ Live site: [deepinkgroup.github.io/ChessOnTop](https://deepinkgroup.github.io/Ch
 
 A responsive chess opening studio with 3,810 searchable ECO A–E lines, beginner lessons, a legal interactive board, move playback, practice from either side, position recognition across move orders, saved openings, and local progress. Play mode adds complete games against a computer opponent, opening book replies, two difficulty settings, takebacks, and game result feedback.
 
-The board includes player rails, three color themes, check and last move feedback, and optional legal move guides. Practice offers Guided, Recall, and Challenge formats with miss tracking. The Books reading room includes a curated six book shelf and a locally saved reading list.
+The board includes player rails, three color themes, check and last move feedback, and optional legal move guides. Practice offers Guided, Recall, and Challenge formats with miss tracking. Administrators curate the Books reading room, which is available to users with Premium permission.
 
-Player accounts can be created and signed in locally. Passwords are salted and hashed before browser storage. The local administrator account uses `Admin` / `Admin123!` and can enable or disable users, delete accounts, add or curate books, and publish a studio announcement. This is a browser-only demo account system; production authentication requires a trusted server and database.
+Player accounts can be created and signed in locally. Passwords are salted and hashed before browser storage. The local administrator account uses `Admin` / `Admin123!` and can grant Premium permission, enable or disable users, delete accounts, curate books, and publish a studio announcement. This is a browser-only demo account system; production authentication requires a trusted server and database.
 
 The expand button beside the board opens Focus Board, a large centered playing view that keeps legal moves, board themes, orientation, game state, and practice feedback active.
 

@@ -820,7 +820,9 @@ button svg {
   text-decoration: underline;
 }
 .footer-links { display: flex; align-items: center; gap: 15px; }
-.footer-links a { display: inline-flex; align-items: center; gap: 5px; }
+.footer-brand strong { color: #718b74; font-weight: 800; }
+.footer-links a { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border: 1px solid #dde6da; border-radius: 8px; background: #fff; }
+.footer-links a:hover { background: #edf5e8; text-decoration: none; }
 .footer-links svg { width: 14px; height: 14px; fill: currentColor; }
 .chesscom-icon { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #82a463; color: #fff; font-size: 11px; line-height: 1; }
 .study-panel {
@@ -2111,6 +2113,9 @@ button svg {
 .books-heading h2 { margin: 5px 0 0; font: 400 27px/1.1 "DM Serif Display", Georgia, serif; }
 .books-heading > span { color: #8a9a8c; font-size: 9px; }
 .books-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
+.books-empty { grid-column: 1 / -1; display: grid; justify-items: center; gap: 7px; padding: 55px 20px; border: 1px dashed #ccd9c7; border-radius: 13px; color: #829384; background: #fff; text-align: center; }
+.books-empty h3 { margin: 4px 0 0; color: #3a5540; font: 400 21px "DM Serif Display", Georgia, serif; }
+.books-empty p { margin: 0; font-size: 9px; }
 .book-card { display: grid; grid-template-columns: 42% 1fr; min-height: 224px; padding: 13px; border: 1px solid #e1e7dd; border-radius: 13px; background: #fff; box-shadow: 0 8px 22px #29452e0a; }
 .book-cover { position: relative; display: flex; flex-direction: column; justify-content: end; overflow: hidden; padding: 15px 13px; border-radius: 6px 10px 10px 6px; box-shadow: 7px 7px 14px #21352825, inset 6px 0 #ffffff16; color: #fff; }
 .book-cover::after { content: ""; position: absolute; inset: 0 auto 0 6px; width: 1px; background: #ffffff28; }
@@ -2129,6 +2134,13 @@ button svg {
 .reading-path-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: #d3e7bf; color: #456845; }
 .reading-path h2 { margin: 3px 0; font: 400 21px "DM Serif Display", Georgia, serif; }
 .reading-path p { margin: 0; color: #7c8d7e; font-size: 9px; }
+.premium-gate { min-height: 560px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 55px 25px; border: 1px solid #dce6d8; border-radius: 16px; background: radial-gradient(circle at 50% 15%, #eef6e6, #fff 60%); text-align: center; }
+.premium-lock { display: grid; place-items: center; width: 84px; height: 84px; margin-bottom: 21px; border: 1px solid #c9dfb8; border-radius: 24px; background: #dff0c9; color: #416b43; box-shadow: 0 12px 28px #5e874222; }
+.premium-lock span { font-size: 52px; line-height: 1; }
+.premium-gate h1 { margin: 9px 0 12px; color: #233e2d; font: 400 39px/1.06 "DM Serif Display", Georgia, serif; }
+.premium-gate > p { max-width: 500px; margin: 0 0 24px; color: #7a8d7d; font-size: 11px; line-height: 1.65; }
+.premium-account { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; background: #edf3e8; color: #718373; font-size: 9px; }
+.premium-account strong { color: #3a5d40; }
 .focus-board-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: radial-gradient(circle at 50% 45%, #29483b 0, #142a23 62%, #0d1f1a 100%); }
 .focus-board-stage { width: min(92vw, 820px); }
 .focus-board-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #eef5eb; }
@@ -2210,6 +2222,8 @@ button svg {
 .admin-user { display: flex; align-items: center; gap: 9px; }.admin-user i { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 8px; background: #dceccb; color: #416244; font-style: normal; font-weight: 800; }.admin-user strong, .admin-user small { display: block; }.admin-user strong { color: #304a35; }.admin-user small { margin-top: 2px; color: #94a096; }
 .admin-table-row em { padding: 4px 7px; border-radius: 10px; font-style: normal; font-size: 7px; text-transform: uppercase; }.admin-table-row em.active { background: #e2f1d5; color: #4b7447; }.admin-table-row em.disabled { background: #f7e7df; color: #97604b; }
 .admin-row-actions { display: flex; justify-content: flex-end; gap: 5px; }.admin-row-actions button, .admin-book-list button { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #dfe7dc; border-radius: 6px; background: #fff; color: #617965; font-size: 8px; }.admin-row-actions .danger, .admin-book-list .danger { color: #a65e50; }
+.admin-row-actions button.premium { color: #806c36; border-color: #e5dbb7; background: #fffdf5; }
+.admin-row-actions button.premium.active { color: #3f6b42; border-color: #bcd5a6; background: #edf7e4; }
 .admin-empty { display: grid; justify-items: center; gap: 5px; padding: 55px; color: #8d9b8f; }.admin-empty strong { color: #465f4a; font-size: 11px; }.admin-empty span { font-size: 9px; }
 .admin-books { display: grid; grid-template-columns: 300px 1fr; gap: 28px; }.admin-book-form { display: grid; align-content: start; gap: 12px; padding-right: 27px; border-right: 1px solid #e7ece4; }.admin-book-form select { padding: 0 9px; }.admin-book-form .primary-button { justify-self: start; border: 0; }
 .admin-book-list { display: grid; align-content: start; gap: 7px; max-height: 600px; overflow: auto; }.admin-book-list > div { display: grid; grid-template-columns: 34px 1fr auto 31px; align-items: center; gap: 9px; padding: 9px; border: 1px solid #e7ece4; border-radius: 8px; }.admin-book-swatch { display: grid; place-items: center; width: 34px; height: 40px; border-radius: 4px; color: #fff; font-size: 7px; }.admin-book-swatch.sage { background:#536f59 }.admin-book-swatch.navy { background:#263f48 }.admin-book-swatch.clay { background:#9d604d }.admin-book-swatch.cream { background:#d8c9a1;color:#2d4537 }.admin-book-swatch.berry { background:#70454f }.admin-book-swatch.gold { background:#ad8640 }.admin-book-list strong, .admin-book-list small { display: block; }.admin-book-list strong { color: #334c38; font-size: 9px; }.admin-book-list small { margin-top: 3px; color: #89968b; font-size: 7px; }

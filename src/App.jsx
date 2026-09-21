@@ -279,14 +279,8 @@ const pieceName = {
   p: "pawn",
 };
 const files = "abcdefgh".split("");
-const DEFAULT_BOOKS = [
-  { id: "logical-chess", title: "Logical Chess: Move by Move", author: "Irving Chernev", focus: "Every move explained", level: "Beginner", color: "sage", mark: "01" },
-  { id: "my-system", title: "My System", author: "Aron Nimzowitsch", focus: "Strategy & positional play", level: "Intermediate", color: "navy", mark: "02" },
-  { id: "reassess", title: "How to Reassess Your Chess", author: "Jeremy Silman", focus: "Planning with imbalances", level: "Intermediate", color: "clay", mark: "03" },
-  { id: "endgame-course", title: "Silman’s Complete Endgame Course", author: "Jeremy Silman", focus: "Endgames by rating", level: "All levels", color: "cream", mark: "04" },
-  { id: "art-attack", title: "The Art of Attack in Chess", author: "Vladimir Vuković", focus: "Build a king-side attack", level: "Advanced", color: "berry", mark: "05" },
-  { id: "mammoth", title: "The Mammoth Book of Chess", author: "Graham Burgess", focus: "A complete chess companion", level: "Beginner", color: "gold", mark: "06" },
-];
+const DEFAULT_BOOKS = [];
+const pieceAsset = (name) => `${import.meta.env.BASE_URL}pieces/${name}.svg`;
 const PRACTICE_STYLES = [
   { id: "guided", title: "Guided line", detail: "Legal move dots and optional hints", icon: ListChecks },
   { id: "recall", title: "Recall drill", detail: "No move dots. Trust your memory", icon: Zap },
@@ -412,7 +406,7 @@ function Board({
                     event.dataTransfer.setData("text/plain", square);
                     event.dataTransfer.effectAllowed = "move";
                   }}
-                  src={`/pieces/${piece.color}${pieceCode[piece.type]}.svg`}
+                  src={pieceAsset(`${piece.color}${pieceCode[piece.type]}`)}
                   alt=""
                   className="piece"
                 />
@@ -476,7 +470,7 @@ function App() {
   const [completed, setCompleted] = useStoredList("openfile-completed");
   const [readingList, setReadingList] = useStoredList("openfile-reading-list");
   const [users, setUsers] = useStoredValue("openfile-users", []);
-  const [books, setBooks] = useStoredValue("openfile-books", DEFAULT_BOOKS);
+  const [books, setBooks] = useStoredValue("openfile-books-v2", DEFAULT_BOOKS);
   const [siteNotice, setSiteNotice] = useStoredValue("openfile-site-notice", "");
   const [currentUser, setCurrentUser] = useState(() => readStored("openfile-session", null, sessionStorage));
   const [authMode, setAuthMode] = useState("signin");
@@ -485,7 +479,6 @@ function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [adminTab, setAdminTab] = useState("overview");
   const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate" });
-  const savedMastered = favorites.filter((id) => completed.includes(id)).length;
   const visibleBooks = books.filter((book) => book.visible !== false);
 
   useEffect(() => {
@@ -844,9 +837,9 @@ function App() {
       }
       const salt = crypto.randomUUID();
       const passwordHash = await passwordDigest(password, salt);
-      const user = { id: crypto.randomUUID(), name: authForm.name.trim(), email, salt, passwordHash, role: "user", status: "active", joined: new Date().toISOString() };
+      const user = { id: crypto.randomUUID(), name: authForm.name.trim(), email, salt, passwordHash, role: "user", premium: false, status: "active", joined: new Date().toISOString() };
       setUsers((current) => [...current, user]);
-      setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user" });
+      setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: false });
       setAuthForm({ name: "", email: "", password: "" });
       setView("account");
       return;
@@ -856,7 +849,7 @@ function App() {
       setAuthError(user?.status === "disabled" ? "This account has been disabled by an administrator." : "Email or password is incorrect.");
       return;
     }
-    setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user" });
+    setCurrentUser({ id: user.id, name: user.name, email: user.email, role: "user", premium: !!user.premium });
     setAuthForm({ name: "", email: "", password: "" });
     setView("account");
   }
@@ -911,27 +904,6 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="progress-card">
-            <div className="progress-icon">
-              <Trophy size={20} />
-            </div>
-            <span className="eyebrow">YOUR JOURNEY</span>
-            <strong>
-              {completed.length} <span>lines mastered</span>
-            </strong>
-            <div className="progress-track">
-              <div
-                style={{
-                  width: `${favorites.length ? (savedMastered / favorites.length) * 100 : 0}%`,
-                }}
-              />
-            </div>
-            <p>
-              {favorites.length
-                ? `${savedMastered} of ${favorites.length} saved lines mastered.`
-                : "Save a line to build your repertoire."}
-            </p>
-          </div>
           <div className="sidebar-foot">
             <span className="online-dot" /> A calmer way to study chess
           </div>
@@ -1208,7 +1180,7 @@ function App() {
                     <div className="piece-guide">
                       {PIECE_GUIDE.map((piece) => (
                         <div key={piece.code} className="piece-guide-card">
-                          <img src={`/pieces/w${piece.code}.svg`} alt="" />
+                          <img src={pieceAsset(`w${piece.code}`)} alt="" />
                           <div>
                             <strong>{piece.name}</strong>
                             <span>{piece.movement}</span>
@@ -1265,7 +1237,7 @@ function App() {
                 <button className="primary-button" onClick={() => document.getElementById("study-panel")?.scrollIntoView({ behavior: "smooth" })}>Go to board <ArrowRight size={16} /></button>
               </section>
             )}
-            {view === "books" && (
+            {view === "books" && (currentUser?.role === "admin" || currentUser?.premium ? (
               <>
                 <section className="books-hero">
                   <div>
@@ -1299,6 +1271,7 @@ function App() {
                       </div>
                     </article>
                   ))}
+                  {visibleBooks.length === 0 && <div className="books-empty"><Library size={32} /><h3>The shelf is being curated.</h3><p>An administrator can add books from the Admin panel.</p></div>}
                 </div>
                 <section className="reading-path">
                   <div className="reading-path-icon"><Library size={24} /></div>
@@ -1306,7 +1279,15 @@ function App() {
                   <button className="primary-button" onClick={() => { chooseView("basics"); setMode("explore"); }}>Open practice board <ArrowRight size={16} /></button>
                 </section>
               </>
-            )}
+            ) : (
+              <section className="premium-gate">
+                <div className="premium-lock"><span>♛</span></div>
+                <span className="eyebrow dark">PREMIUM READING ROOM</span>
+                <h1>Books for players<br />who want to go deeper.</h1>
+                <p>The chess book library is available to Premium members. Ask an administrator to enable Premium access for your account.</p>
+                {!currentUser ? <button className="primary-button" onClick={() => chooseView("account")}><LogIn size={16} /> Sign in to your account</button> : <div className="premium-account"><User size={16} /><span>Signed in as <strong>{currentUser.name}</strong> · Standard account</span></div>}
+              </section>
+            ))}
             {view === "account" && (
               !currentUser ? (
                 <section className="auth-page">
@@ -1335,7 +1316,7 @@ function App() {
                 </section>
               ) : (
                 <section className="account-page">
-                  <div className="account-hero"><span className="account-avatar">{currentUser.name[0]}</span><div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email}</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
+                  <div className="account-hero"><span className="account-avatar">{currentUser.name[0]}</span><div><span className="eyebrow">YOUR PLAYER PROFILE</span><h1>Welcome, {currentUser.name}.</h1><p>{currentUser.email} · {currentUser.premium ? "Premium member" : "Standard member"}</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
                   <div className="account-stats"><div><Bookmark size={20} /><strong>{favorites.length}</strong><span>Saved lines</span></div><div><Trophy size={20} /><strong>{completed.length}</strong><span>Mastered</span></div><div><Library size={20} /><strong>{readingList.length}</strong><span>Books saved</span></div></div>
                   <div className="account-actions"><button onClick={() => chooseView("practice")}><Target size={20} /><span><strong>Continue practicing</strong><small>Train one of your opening lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("collection")}><Bookmark size={20} /><span><strong>Open your repertoire</strong><small>Review saved and mastered lines</small></span><ArrowRight size={17} /></button><button onClick={() => chooseView("books")}><Library size={20} /><span><strong>Visit your reading room</strong><small>Find your saved chess books</small></span><ArrowRight size={17} /></button></div>
                 </section>
@@ -1346,7 +1327,7 @@ function App() {
                 <div className="admin-header"><div><span className="eyebrow">OPENFILE CONTROL ROOM</span><h1>Admin panel</h1><p>Manage local accounts, the reading room, and studio settings.</p></div><button onClick={signOut}><LogOut size={16} /> Sign out</button></div>
                 <div className="admin-tabs">{[["overview", LayoutDashboard, "Overview"], ["users", Users, "Users"], ["books", Library, "Books"], ["settings", Settings, "Settings"]].map(([id, Icon, label]) => <button key={id} className={adminTab === id ? "active" : ""} onClick={() => setAdminTab(id)}><Icon size={16} /> {label}</button>)}</div>
                 {adminTab === "overview" && <><div className="admin-metrics"><div><Users size={21} /><span>Registered users</span><strong>{users.length}</strong><small>{users.filter((user) => user.status !== "disabled").length} active</small></div><div><Library size={21} /><span>Library books</span><strong>{books.length}</strong><small>{visibleBooks.length} visible</small></div><div><BookOpen size={21} /><span>Opening lines</span><strong>{OPENINGS.length.toLocaleString()}</strong><small>ECO A–E</small></div><div><Trophy size={21} /><span>Mastered locally</span><strong>{completed.length}</strong><small>this browser</small></div></div><div className="admin-welcome"><ShieldCheck size={28} /><div><h2>Studio controls are ready.</h2><p>Use the tabs above to moderate accounts, curate the book shelf, and publish a message across the studio.</p></div></div></>}
-                {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
+                {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button className={`premium ${user.premium ? "active" : ""}`} onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, premium: !item.premium } : item))}><Sparkles size={15} />{user.premium ? "Premium" : "Make premium"}</button><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
                 {adminTab === "books" && <div className="admin-books"><form className="admin-book-form" onSubmit={addBook}><div><span className="eyebrow dark">ADD TO THE SHELF</span><h2>New book</h2></div><label>Title<input value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label><label>Author<input value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label><label>Focus<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label><label>Level<select value={newBook.level} onChange={(event) => setNewBook((current) => ({ ...current, level: event.target.value }))}><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>All levels</option></select></label><button className="primary-button" type="submit">Add book <ArrowRight size={16} /></button></form><div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color}`}>{book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}</small></span><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div></div>}
                 {adminTab === "settings" && <div className="admin-settings"><div><span className="eyebrow dark">STUDIO MESSAGE</span><h2>Announcement bar</h2><p>Publish a short message at the top of every page in this browser.</p><label>Announcement<textarea value={siteNotice} onChange={(event) => setSiteNotice(event.target.value)} placeholder="Example: New opening drills are available this week." maxLength={120} /></label><small>{siteNotice.length}/120 characters</small>{siteNotice && <button onClick={() => setSiteNotice("")}>Clear announcement</button>}</div><div className="settings-preview"><span>PREVIEW</span><div><Sparkles size={14} /> {siteNotice || "Your announcement will appear here."}</div></div></div>}
               </section>
@@ -1563,17 +1544,14 @@ function App() {
               </>
             )}
             <div className="content-footer">
-              <span>Made for the love of the game.</span>
+              <span className="footer-brand">ChessOnTop. <strong>DeepInk Group</strong></span>
               <div className="footer-links">
                 <a href="https://t.me/DeepInkGroup" target="_blank" rel="noreferrer" aria-label="DeepInk Group on Telegram" title="Telegram">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 3.1 18.4 20c-.2 1.2-.9 1.5-1.9.9l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9-8.1c.4-.4-.1-.6-.6-.3L5.9 13.7 1.1 12.2c-1-.3-1-1 .2-1.5L20 3.5c.9-.3 1.7.2 1.6-.4Z" /></svg>
-                  Telegram
                 </a>
                 <a href="https://www.chess.com/member/azomorodian" target="_blank" rel="noreferrer" aria-label="Azomorodian on Chess.com" title="Chess.com">
                   <span className="chesscom-icon" aria-hidden="true">♞</span>
-                  Chess.com
                 </a>
-                <a href="https://github.com/lichess-org/chess-openings" target="_blank" rel="noreferrer">Opening data by Lichess · CC0</a>
               </div>
             </div>
           </main>
@@ -2049,7 +2027,7 @@ function App() {
                   }}
                 >
                   <img
-                    src={`/pieces/${pendingPromotion.color}${piece}.svg`}
+                    src={pieceAsset(`${pendingPromotion.color}${piece}`)}
                     alt=""
                   />
                 </button>

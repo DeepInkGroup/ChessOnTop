@@ -49,10 +49,9 @@ try {
   await page.screenshot({ path: resolve(output, "focus-board.png"), fullPage: true });
   await focusBoard.getByRole("button", { name: "Close large board" }).click();
 
-  await page.getByRole("button", { name: "Books" }).click();
-  assert.equal(await page.locator(".book-card").count(), 6);
-  await page.getByRole("button", { name: "Add to reading list" }).first().click();
-  assert.match(await page.locator(".books-heading").innerText(), /1 saved/);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
+  await page.getByRole("heading", { name: /Books for players/ }).waitFor();
+  assert.equal(await page.locator(".book-card").count(), 0);
   await page.screenshot({ path: resolve(output, "books.png"), fullPage: true });
 
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
@@ -63,6 +62,9 @@ try {
   await page.locator('input[aria-label="Password"]').fill("StrongPass9!");
   await page.getByRole("button", { name: "Create my account" }).click();
   await page.getByRole("heading", { name: "Welcome, Test Player." }).waitFor();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
+  assert.match(await page.locator(".premium-account").innerText(), /Standard account/);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "My account" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("textbox", { name: "Email or username" }).fill("Admin");
   await page.locator('input[aria-label="Password"]').fill("Admin123!");
@@ -70,8 +72,8 @@ try {
   await page.getByRole("heading", { name: "Admin panel" }).waitFor();
   await page.locator(".admin-tabs").getByRole("button", { name: "Users" }).click();
   assert.match(await page.locator(".admin-table").innerText(), /Test Player/);
-  await page.getByRole("button", { name: "Disable" }).click();
-  assert.match(await page.locator(".admin-table").innerText(), /disabled/i);
+  await page.getByRole("button", { name: "Make premium" }).click();
+  assert.match(await page.locator(".admin-table").innerText(), /Premium/);
   await page.locator(".admin-tabs").getByRole("button", { name: "Books" }).click();
   await page.getByPlaceholder("Book title").fill("Winning Chess Habits");
   await page.getByPlaceholder("Author").fill("Openfile Studio");
@@ -82,6 +84,12 @@ try {
   await page.getByText("New training week is live.").first().waitFor();
   await page.screenshot({ path: resolve(output, "admin.png"), fullPage: true });
   await page.locator(".admin-header").getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("textbox", { name: "Email or username" }).fill("player@example.com");
+  await page.locator('input[aria-label="Password"]').fill("StrongPass9!");
+  await page.locator(".auth-submit").click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
+  await page.locator(".book-card h3", { hasText: "Winning Chess Habits" }).waitFor();
+  assert.equal(await page.locator(".book-card").count(), 1);
   await page.getByRole("button", { name: "Overview" }).click();
 
   await page.getByRole("button", { name: "Play a game" }).first().click();
