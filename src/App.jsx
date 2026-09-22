@@ -22,6 +22,7 @@ import {
   Library,
   Lightbulb,
   ListChecks,
+  Lock,
   LogIn,
   LogOut,
   Maximize2,
@@ -29,6 +30,7 @@ import {
   MousePointer2,
   Pause,
   Play,
+  Pencil,
   RotateCcw,
   Swords,
   Search,
@@ -42,6 +44,7 @@ import {
   Trash2,
   Trophy,
   Type,
+  Unlock,
   Undo2,
   User,
   UserPlus,
@@ -459,7 +462,7 @@ function makeGame(moves) {
 
 const escapeHtml = (value = "") => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const richTextPlain = (value = "") => value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
-const EDITOR_FONTS = ["Georgia", "Arial", "Verdana", "Trebuchet MS", "Times New Roman", "Courier New"];
+const EDITOR_FONTS = ["DM Serif Display", "Georgia", "Palatino Linotype", "Garamond", "Times New Roman", "Arial", "Verdana", "Trebuchet MS", "Tahoma", "Courier New"];
 const EDITOR_IMAGE_PLACEMENTS = ["wide", "center", "left", "right"];
 
 function sanitizeRichText(value = "") {
@@ -936,6 +939,8 @@ function App() {
   const [favorites, setFavorites] = useStoredList("openfile-favorites");
   const [completed, setCompleted] = useStoredList("openfile-completed");
   const [readingList, setReadingList] = useStoredList("openfile-reading-list");
+  const [readBooks, setReadBooks] = useStoredList("cot-read-books");
+  const [readArticles, setReadArticles] = useStoredList("cot-read-articles");
   const [basicCompleted, setBasicCompleted] = useStoredList("openfile-basics-completed");
   const [visionCompleted, setVisionCompleted] = useStoredList("cot-vision-completed");
   const [users, setUsers] = useStoredValue("openfile-users", []);
@@ -951,6 +956,8 @@ function App() {
   const [adminTab, setAdminTab] = useState("overview");
   const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
   const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+  const [editingBookId, setEditingBookId] = useState(null);
+  const [editingArticleId, setEditingArticleId] = useState(null);
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [profileForm, setProfileForm] = useState({ fullName: "", country: "", fideRating: "", chessTitle: "None", playingLevel: "Beginner", favoriteOpening: "", bio: "" });
@@ -1440,22 +1447,67 @@ function App() {
     event.preventDefault();
     if (!newBook.title.trim() || !newBook.author.trim()) return;
     const palette = ["sage", "navy", "clay", "cream", "berry", "gold"];
-    setBooks((current) => [...current, { ...newBook, content: sanitizeRichText(newBook.content), id: crypto.randomUUID(), mark: String(current.length + 1).padStart(2, "0"), color: palette[current.length % palette.length], visible: true }]);
+    if (editingBookId) {
+      setBooks((current) => current.map((book) => book.id === editingBookId ? { ...book, ...newBook, content: sanitizeRichText(newBook.content) } : book));
+      setEditingBookId(null);
+    } else {
+      setBooks((current) => [...current, { ...newBook, content: sanitizeRichText(newBook.content), id: crypto.randomUUID(), mark: String(current.length + 1).padStart(2, "0"), color: palette[current.length % palette.length], visible: true, locked: false }]);
+    }
     setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
   }
 
   function addArticle(event) {
     event.preventDefault();
     if (!newArticle.title.trim() || !richTextPlain(newArticle.content)) return;
-    setArticles((current) => [{
-      ...newArticle,
-      content: sanitizeRichText(newArticle.content),
-      id: crypto.randomUUID(),
-      author: newArticle.author.trim() || "CO.T Editorial",
-      published: new Date().toISOString(),
-      visible: true,
-    }, ...current]);
+    if (editingArticleId) {
+      setArticles((current) => current.map((article) => article.id === editingArticleId ? { ...article, ...newArticle, content: sanitizeRichText(newArticle.content), author: newArticle.author.trim() || "CO.T Editorial" } : article));
+      setEditingArticleId(null);
+    } else {
+      setArticles((current) => [{
+        ...newArticle,
+        content: sanitizeRichText(newArticle.content),
+        id: crypto.randomUUID(),
+        author: newArticle.author.trim() || "CO.T Editorial",
+        published: new Date().toISOString(),
+        visible: true,
+        locked: false,
+      }, ...current]);
+    }
     setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+  }
+
+  function editBook(book) {
+    setEditingArticleId(null);
+    setEditingBookId(book.id);
+    setNewBook({ title: book.title, author: book.author, focus: book.focus || "", level: book.level || "Intermediate", image: book.image || "", content: book.content || "" });
+  }
+
+  function editArticle(article) {
+    setEditingBookId(null);
+    setEditingArticleId(article.id);
+    setNewArticle({ title: article.title, author: article.author || "", category: article.category || "Strategy", summary: article.summary || "", image: article.image || "", content: article.content || "" });
+  }
+
+  function cancelBookEdit() {
+    setEditingBookId(null);
+    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
+  }
+
+  function cancelArticleEdit() {
+    setEditingArticleId(null);
+    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+  }
+
+  function openBook(book) {
+    if (book.locked) return;
+    setReadBooks((current) => current.includes(book.id) ? current : [...current, book.id]);
+    setSelectedBook(book);
+  }
+
+  function openArticle(article) {
+    if (article.locked) return;
+    setReadArticles((current) => current.includes(article.id) ? current : [...current, article.id]);
+    setSelectedArticle(article);
   }
 
   function startVisionLesson(lesson) {
@@ -2042,10 +2094,11 @@ function App() {
                 </div>
                 <div className="books-grid">
                   {visibleBooks.map((book) => (
-                    <article className="book-card" key={book.id}>
+                    <article className={`book-card ${book.locked ? "locked" : ""}`} key={book.id}>
                       <div className={`book-cover ${book.color} ${book.image ? "has-image" : ""}`}>
                         {book.image && <img className="book-cover-image" src={book.image} alt="" />}
                         <span className="book-number">CO.T / {book.mark}</span>
+                        {readBooks.includes(book.id) && <span className="read-verify" title="Read"><Check size={11} /> Read</span>}
                         <span className="book-piece">{Number(book.mark) % 2 ? "♞" : "♝"}</span>
                         <strong>{book.title}</strong>
                         <small>{book.author}</small>
@@ -2055,7 +2108,7 @@ function App() {
                         <h3>{book.title}</h3>
                         <p>{book.focus}</p>
                         <div className="book-actions">
-                          {book.content?.trim() && <button className="read-book" onClick={() => setSelectedBook(book)}><BookOpen size={15} /> Read book</button>}
+                          {book.content?.trim() && <button className="read-book" disabled={book.locked} onClick={() => openBook(book)}>{book.locked ? <Lock size={15} /> : <BookOpen size={15} />}{book.locked ? "Locked" : "Read book"}</button>}
                           <button className={readingList.includes(book.id) ? "saved" : ""} onClick={() => setReadingList((current) => current.includes(book.id) ? current.filter((id) => id !== book.id) : [...current, book.id])}>
                             {readingList.includes(book.id) ? <Check size={15} /> : <Bookmark size={15} />}
                             {readingList.includes(book.id) ? "Saved" : "Save"}
@@ -2098,13 +2151,13 @@ function App() {
                 {visibleArticles.length ? (
                   <div className="articles-grid">
                     {visibleArticles.map((article, index) => (
-                      <article className={`article-card article-tone-${index % 3} ${article.image ? "has-image" : ""}`} key={article.id}>
+                      <article className={`article-card article-tone-${index % 3} ${article.image ? "has-image" : ""} ${article.locked ? "locked" : ""}`} key={article.id}>
                         {article.image && <img className="article-card-image" src={article.image} alt="" />}
-                        <div className="article-card-top"><span>{article.category}</span><small>{new Date(article.published).toLocaleDateString()}</small></div>
+                        <div className="article-card-top"><span>{article.category}</span><div><small>{new Date(article.published).toLocaleDateString()}</small>{readArticles.includes(article.id) && <span className="read-verify" title="Read"><Check size={11} /> Read</span>}</div></div>
                         <div className="article-glyph" aria-hidden="true">{index % 2 ? "♝" : "♞"}</div>
                         <h3>{article.title}</h3>
                         <p>{article.summary || richTextPlain(article.content).slice(0, 150)}</p>
-                        <div className="article-card-footer"><span>By {article.author}</span><button onClick={() => setSelectedArticle(article)}>Read article <ArrowUpRight size={15} /></button></div>
+                        <div className="article-card-footer"><span>By {article.author}</span><button disabled={article.locked} onClick={() => openArticle(article)}>{article.locked ? <><Lock size={15} /> Locked</> : <>Read article <ArrowUpRight size={15} /></>}</button></div>
                       </article>
                     ))}
                   </div>
@@ -2194,7 +2247,7 @@ function App() {
                 {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button className={`premium ${user.premium ? "active" : ""}`} onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, premium: !item.premium } : item))}><Sparkles size={15} />{user.premium ? "Premium" : "Make premium"}</button><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
                 {adminTab === "books" && <div className="admin-books">
                   <form className="admin-book-form" onSubmit={addBook}>
-                    <div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>New book</h2><p>Build a Premium book with a cover, formatted chapters, and images placed inside the text.</p></div>
+                    <div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>{editingBookId ? "Edit book" : "New book"}</h2><p>{editingBookId ? "Update the published book, then save the revised edition." : "Build a Premium book with a cover, formatted chapters, and images placed inside the text."}</p></div>
                     <label>Title<input required value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label>
                     <label>Author<input required value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label>
                     <label>Summary<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label>
@@ -2202,22 +2255,22 @@ function App() {
                     <ImageUpload label="Book cover image" value={newBook.image} onChange={(image) => setNewBook((current) => ({ ...current, image }))} />
                     <RichTextEditor label="Book content" value={newBook.content} onChange={(content) => setNewBook((current) => ({ ...current, content }))} placeholder={"Write the book here. Use blank lines between chapters or sections.\n\nChapter 1 — The first idea..."} />
                     <small className="editor-count">{richTextPlain(newBook.content).length.toLocaleString()} characters</small>
-                    <button className="primary-button" type="submit">Publish book <ArrowRight size={16} /></button>
+                    <div className="publish-actions"><button className="primary-button" type="submit">{editingBookId ? "Save book" : "Publish book"} <ArrowRight size={16} /></button>{editingBookId && <button type="button" className="cancel-edit" onClick={cancelBookEdit}>Cancel</button>}</div>
                   </form>
-                  <div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color} ${book.image ? "has-image" : ""}`} style={book.image ? { backgroundImage: `url(${book.image})` } : undefined}>{!book.image && book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{richTextPlain(book.content) ? " · Readable" : " · No content"}</small></span><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div>
+                  <div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color} ${book.image ? "has-image" : ""}`} style={book.image ? { backgroundImage: `url(${book.image})` } : undefined}>{!book.image && book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{book.locked ? " · Locked" : richTextPlain(book.content) ? " · Readable" : " · No content"}</small></span><button aria-label={`Edit ${book.title}`} onClick={() => editBook(book)}><Pencil size={15} />Edit</button><button aria-label={`${book.locked ? "Unlock" : "Lock"} ${book.title}`} onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, locked: !item.locked } : item))}>{book.locked ? <Unlock size={15} /> : <Lock size={15} />}{book.locked ? "Unlock" : "Lock"}</button><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div>
                 </div>}
                 {adminTab === "articles" && <div className="admin-articles">
                   <form className="admin-article-form" onSubmit={addArticle}>
-                    <div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>New article</h2><p>Publish a Premium article with rich typography and images placed through the story.</p></div>
+                    <div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>{editingArticleId ? "Edit article" : "New article"}</h2><p>{editingArticleId ? "Update the published article, then save the revised edition." : "Publish a Premium article with rich typography and images placed through the story."}</p></div>
                     <label>Title<input required value={newArticle.title} onChange={(event) => setNewArticle((current) => ({ ...current, title: event.target.value }))} placeholder="Article title" /></label>
                     <div className="admin-form-row"><label>Author<input value={newArticle.author} onChange={(event) => setNewArticle((current) => ({ ...current, author: event.target.value }))} placeholder="CO.T Editorial" /></label><label>Category<select value={newArticle.category} onChange={(event) => setNewArticle((current) => ({ ...current, category: event.target.value }))}><option>Strategy</option><option>Openings</option><option>Tactics</option><option>Endgames</option><option>Mindset</option></select></label></div>
                     <label>Short summary<textarea className="summary-field" value={newArticle.summary} onChange={(event) => setNewArticle((current) => ({ ...current, summary: event.target.value }))} placeholder="A short introduction for the article card" maxLength={220} /></label>
                     <ImageUpload label="Article feature image" value={newArticle.image} onChange={(image) => setNewArticle((current) => ({ ...current, image }))} />
                     <RichTextEditor label="Article content" value={newArticle.content} onChange={(content) => setNewArticle((current) => ({ ...current, content }))} placeholder={"Write the full article here.\n\nUse blank lines to create readable paragraphs."} />
                     <small className="editor-count">{richTextPlain(newArticle.content).length.toLocaleString()} characters</small>
-                    <button className="primary-button" type="submit">Publish article <ArrowRight size={16} /></button>
+                    <div className="publish-actions"><button className="primary-button" type="submit">{editingArticleId ? "Save article" : "Publish article"} <ArrowRight size={16} /></button>{editingArticleId && <button type="button" className="cancel-edit" onClick={cancelArticleEdit}>Cancel</button>}</div>
                   </form>
-                  <div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span className={article.image ? "has-image" : ""} style={article.image ? { backgroundImage: `url(${article.image})` } : undefined}>{!article.image && <Lightbulb size={17} />}</span><div><strong>{article.title}</strong><small>{article.category} · {article.author}</small></div><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div>
+                  <div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span className={article.image ? "has-image" : ""} style={article.image ? { backgroundImage: `url(${article.image})` } : undefined}>{!article.image && <Lightbulb size={17} />}</span><div><strong>{article.title}</strong><small>{article.category} · {article.author}{article.locked ? " · Locked" : ""}</small></div><button aria-label={`Edit ${article.title}`} onClick={() => editArticle(article)}><Pencil size={15} />Edit</button><button aria-label={`${article.locked ? "Unlock" : "Lock"} ${article.title}`} onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, locked: !item.locked } : item))}>{article.locked ? <Unlock size={15} /> : <Lock size={15} />}{article.locked ? "Unlock" : "Lock"}</button><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div>
                 </div>}
                 {adminTab === "settings" && <div className="admin-settings">
                   <section className="settings-card announcement-settings">

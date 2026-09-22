@@ -152,6 +152,7 @@ try {
   await bookEditor.press("Control+A");
   await page.getByRole("button", { name: "Book content bold" }).click();
   assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<(b|strong)>/i);
+  assert.equal(await page.getByLabel("Book content font").locator("option").count(), 10);
   await bookEditor.press("Control+A");
   await page.getByLabel("Book content font").selectOption("Times New Roman");
   assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<font[^>]+face=["']?Times New Roman/i);
@@ -169,6 +170,13 @@ try {
   assert.equal(await bookEditor.locator('figure[data-placement="right"]').count(), 1);
   await page.getByRole("button", { name: "Publish book" }).click();
   await page.getByText("Winning Chess Habits", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Edit Winning Chess Habits" }).click();
+  await page.getByRole("heading", { name: "Edit book" }).waitFor();
+  await page.getByPlaceholder("What it teaches").fill("An updated practical guide to better decisions.");
+  await page.getByRole("button", { name: "Save book" }).click();
+  await page.getByRole("button", { name: "Lock Winning Chess Habits" }).click();
+  await page.getByRole("button", { name: "Unlock Winning Chess Habits" }).waitFor();
+  await page.getByRole("button", { name: "Unlock Winning Chess Habits" }).click();
   await page.screenshot({ path: resolve(output, "admin-books.png"), fullPage: true });
   await page.locator(".admin-tabs").getByRole("button", { name: "Articles" }).click();
   await page.getByPlaceholder("Article title").fill("Three questions before every move");
@@ -189,6 +197,13 @@ try {
   assert.equal(await articleEditor.locator('figure[data-placement="center"]').count(), 2);
   await page.getByRole("button", { name: "Publish article" }).click();
   await page.getByText("Three questions before every move", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Edit Three questions before every move" }).click();
+  await page.getByRole("heading", { name: "Edit article" }).waitFor();
+  await page.getByPlaceholder("A short introduction for the article card").fill("An updated routine for dependable decisions.");
+  await page.getByRole("button", { name: "Save article" }).click();
+  await page.getByRole("button", { name: "Lock Three questions before every move" }).click();
+  await page.getByRole("button", { name: "Unlock Three questions before every move" }).waitFor();
+  await page.getByRole("button", { name: "Unlock Three questions before every move" }).click();
   await page.screenshot({ path: resolve(output, "admin-articles.png"), fullPage: true });
   await page.locator(".admin-tabs").getByRole("button", { name: "Settings" }).click();
   await page.getByRole("textbox", { name: "Announcement", exact: true }).fill("New training week is live.");
@@ -224,6 +239,10 @@ try {
   assert.ok((await articleReader.locator(".reader-content i, .reader-content em").count()) > 0);
   assert.equal(await articleReader.locator(".reader-content figure").count(), 2);
   await page.getByRole("button", { name: "Close article" }).click();
+  assert.equal(await page.locator(".article-card .read-verify").count(), 1);
+  await page.getByRole("button", { name: "Read article" }).click();
+  await page.getByRole("dialog", { name: /Reading Three questions/ }).waitFor();
+  await page.getByRole("button", { name: "Close article" }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
   await page.locator(".book-card h3", { hasText: "Winning Chess Habits" }).waitFor();
   assert.equal(await page.locator(".book-card").count(), 1);
@@ -236,6 +255,10 @@ try {
   assert.ok((await bookReader.locator('.reader-content font[face="Times New Roman"]').count()) > 0);
   assert.equal(await bookReader.locator(".reader-content figure").count(), 2);
   assert.equal(await bookReader.locator('figure[data-placement="right"]').count(), 1);
+  await page.getByRole("button", { name: "Close book" }).click();
+  assert.equal(await page.locator(".book-cover .read-verify").count(), 1);
+  await page.getByRole("button", { name: "Read book" }).click();
+  await page.getByRole("dialog", { name: /Reading Winning Chess Habits/ }).waitFor();
   await page.getByRole("button", { name: "Close book" }).click();
   await page.getByRole("button", { name: "Overview" }).click();
   assert.equal(await page.locator(".study-panel").count(), 0);
