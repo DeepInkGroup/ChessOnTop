@@ -11,6 +11,8 @@ import {
   Copy,
   ChevronRight,
   Compass,
+  Download,
+  FileText,
   FlipHorizontal,
   GraduationCap,
   Heart,
@@ -30,6 +32,7 @@ import {
   MousePointer2,
   Pause,
   Play,
+  Printer,
   Pencil,
   RotateCcw,
   Swords,
@@ -324,6 +327,45 @@ const BASICS_LESSONS = [
     ],
     exercise: "Set up a simple capture and count the material each side would give up before making the move.",
     quiz: { question: "Which trade usually wins material?", choices: ["A queen for a pawn", "A bishop for a queen", "A rook for a rook"], answer: 1 },
+  },
+  {
+    title: "Read the position",
+    eyebrow: "08 · SEE THE WHOLE BOARD",
+    icon: Eye,
+    description: "Strong decisions start with a complete scan. Before choosing a move, understand what changed and which squares matter now.",
+    points: [
+      "Start with checks, captures, and threats for both sides before making a plan.",
+      "Compare the two kings, the open files, and the pieces that have fewer defenders.",
+      "Ask what your opponent wants next so your move solves a real problem.",
+    ],
+    exercise: "After each move, name one new threat and one newly weakened square.",
+    quiz: { question: "What should you scan before making a move?", choices: ["Only your pieces", "Checks, captures, and threats for both sides", "Only the center", "The clock first"], answer: 1 },
+  },
+  {
+    title: "Choose candidate moves",
+    eyebrow: "09 · CALCULATE WITH PURPOSE",
+    icon: ListChecks,
+    description: "You do not need to calculate every legal move. Create a short list of serious candidates, then compare what each one changes.",
+    points: [
+      "Start with forcing moves, then consider improving a piece or solving a weakness.",
+      "Calculate the opponent's strongest reply before you trust your idea.",
+      "Prefer the move that improves more than one part of the position.",
+    ],
+    exercise: "Find three candidate moves in a position and write the opponent's best reply to each.",
+    quiz: { question: "What makes a candidate move serious?", choices: ["It is the fastest move", "It creates a clear improvement or forcing idea", "It uses a pawn", "It looks surprising"], answer: 1 },
+  },
+  {
+    title: "Review the game",
+    eyebrow: "10 · KEEP THE LESSON",
+    icon: RotateCcw,
+    description: "A short review turns a played game into progress. Find the first moment your plan changed and name a better question for next time.",
+    points: [
+      "Review without an engine first and mark moments where you felt uncertain.",
+      "Separate a calculation mistake from a planning or time-management mistake.",
+      "Write one small action to practice in your next game.",
+    ],
+    exercise: "Choose one turning point and explain what you saw, what you missed, and what you will check next time.",
+    quiz: { question: "What is the most useful first review step?", choices: ["Look for your first uncertain moment", "Count every move", "Only inspect the opening", "Delete the game"], answer: 0 },
   },
 ];
 const PIECE_GUIDE = [
@@ -1456,6 +1498,26 @@ function App() {
     setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
   }
 
+  function practicePgn() {
+    return mode === "practice" ? game.pgn() : opening.pgn;
+  }
+
+  function downloadPracticePgn() {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([practicePgn()], { type: "application/x-chess-pgn" }));
+    link.download = `${opening.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "practice-line"}.pgn`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function printPracticePdf() {
+    const printWindow = window.open("", "_blank", "width=920,height=720");
+    if (!printWindow) return;
+    const pgn = practicePgn();
+    printWindow.document.write(`<!doctype html><html><head><title>${escapeHtml(opening.name)} · Practice line</title><style>body{margin:0;padding:48px;color:#203b2c;font:16px/1.6 Georgia,serif}main{max-width:760px;margin:auto}h1{margin:0 0 6px;font-size:34px}p{color:#6f8173}pre{padding:22px;border:1px solid #d8e3d5;border-radius:10px;background:#f4f8f0;white-space:pre-wrap;font:14px/1.7 ui-monospace,monospace}@media print{body{padding:0}main{max-width:none}}</style></head><body><main><p>CO.T / ChessOn.Top · PRACTICE ROOM</p><h1>${escapeHtml(opening.name)}</h1><p>Exported practice line</p><pre>${escapeHtml(pgn)}</pre></main><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`);
+    printWindow.document.close();
+  }
+
   function addArticle(event) {
     event.preventDefault();
     if (!newArticle.title.trim() || !richTextPlain(newArticle.content)) return;
@@ -1885,7 +1947,7 @@ function App() {
                 <div className="section-heading basics-section-heading">
                   <div>
                     <span className="eyebrow dark">A LITTLE AT A TIME</span>
-                    <h2>Your seven chess essentials</h2>
+                    <h2>Your ten chess essentials</h2>
                     <p>Read the idea, try the board challenge, then pass the checkpoint.</p>
                   </div>
                 </div>
@@ -2027,12 +2089,13 @@ function App() {
                       </div>
                     </div>
                   </section>
-                  <section className="thinking-routine">
+                  {currentUser ? <section className="thinking-routine">
                     <div className="basics-tool-heading">
                       <div>
                         <span className="eyebrow dark">BEFORE EVERY MOVE</span>
                         <h2>Your thinking routine</h2>
                       </div>
+                      <span className="member-pill premium"><Check size={12} /> Unlocked</span>
                     </div>
                     <p className="thinking-intro">Use this quick scan in every practice game until it becomes automatic.</p>
                     <div className="thinking-habits">
@@ -2043,7 +2106,11 @@ function App() {
                         </div>
                       ))}
                     </div>
-                  </section>
+                  </section> : <section className="thinking-routine thinking-routine-locked">
+                    <div className="basics-tool-heading"><div><span className="eyebrow dark">BEFORE EVERY MOVE</span><h2>Your thinking routine</h2></div><Lock size={20} /></div>
+                    <p className="thinking-intro">Create a free account to unlock the four-step scan and keep it beside your practice board.</p>
+                    <button className="primary-button" onClick={() => chooseView("account")}><UserPlus size={15} /> Create your account <ArrowRight size={15} /></button>
+                  </section>}
                   <section className="basics-drill">
                     <div className="drill-visual"><span>{String(Math.floor(basicsDrill.secondsLeft / 60)).padStart(2, "0")}:{String(basicsDrill.secondsLeft % 60).padStart(2, "0")}</span><Timer size={25} /><small>{basicsDrill.started ? "TIME REMAINING" : "STARTS WITH YOUR FIRST ANSWER"}</small><div><strong>{basicsDrill.streak}</strong><small>CURRENT STREAK</small></div></div>
                     <div className="drill-content">
@@ -2842,6 +2909,11 @@ function App() {
                   >
                     <RotateCcw size={16} /> Restart
                   </button>
+                </div>
+                <div className="practice-export" aria-label="Export practice line">
+                  <span>KEEP THIS LINE</span>
+                  <button onClick={downloadPracticePgn}><Download size={14} /> Export PGN</button>
+                  <button onClick={printPracticePdf}><Printer size={14} /> Save as PDF</button>
                 </div>
               </div>
             )}

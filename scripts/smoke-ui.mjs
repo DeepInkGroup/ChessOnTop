@@ -37,6 +37,7 @@ try {
   await page.goto(url, { waitUntil: "networkidle" });
   assert.match(await page.locator(".hero h1").innerText(), /Own the opening/);
   assert.match(await page.locator(".brand").innerText(), /CO\.T/);
+  assert.match(await page.locator('link[rel="icon"]').getAttribute("href"), /favicon\.svg/);
   assert.equal(await page.locator(".study-panel").count(), 0);
   await page.screenshot({
     path: resolve(output, "desktop.png"),
@@ -97,6 +98,9 @@ try {
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
   await page.getByRole("heading", { name: /Sharper ideas/ }).waitFor();
   assert.equal(await page.locator(".article-card").count(), 0);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Learn the basics" }).click();
+  assert.equal(await page.locator(".thinking-routine-locked").count(), 1);
+  assert.equal(await page.getByRole("button", { name: /Create your account/ }).count(), 1);
 
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
   await page.screenshot({ path: resolve(output, "sign-in.png"), fullPage: true });
@@ -281,7 +285,7 @@ try {
   assert.equal(await page.getByRole("tab", { name: "Play" }).getAttribute("aria-selected"), "true");
 
   await page.getByRole("button", { name: "Learn the basics" }).click();
-  assert.equal(await page.locator(".lesson-card").count(), 7);
+  assert.equal(await page.locator(".lesson-card").count(), 10);
   assert.equal(await page.getByRole("button", { name: /Piece value and trades/ }).count(), 1);
   assert.equal(await page.locator(".study-panel").count(), 0);
   assert.equal(await page.locator(".thinking-habit").count(), 4);
@@ -304,7 +308,7 @@ try {
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
   await page.locator(".checkpoint-options button").nth(1).click();
   await page.getByText("Passed", { exact: true }).waitFor();
-  assert.match(await page.locator(".basics-progress-card").innerText(), /1 of 7 complete/);
+  assert.match(await page.locator(".basics-progress-card").innerText(), /1 of 10 complete/);
   await page.screenshot({
     path: resolve(output, "basics.png"),
     fullPage: true,
@@ -393,6 +397,11 @@ try {
   await page.locator('.board-wrap [aria-label="d7 black pawn"]').click();
   await page.locator('.board-wrap [aria-label="d5"]').click();
   assert.equal(await page.locator(".move-list button").count(), 2);
+  const pgnDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export PGN" }).click();
+  const pgnDownload = await pgnDownloadPromise;
+  assert.match(pgnDownload.suggestedFilename(), /\.pgn$/);
+  assert.equal(await page.getByRole("button", { name: "Save as PDF" }).count(), 1);
   await page.screenshot({ path: resolve(output, "practice-free.png"), fullPage: true });
   await page.getByRole("button", { name: /Guided line/ }).click();
   await page.getByRole("button", { name: "Hint", exact: true }).click();

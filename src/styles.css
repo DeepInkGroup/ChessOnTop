@@ -1187,6 +1187,7 @@ button svg {
 .practice-controls {
   margin: 9px 0 15px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 7px;
@@ -1235,6 +1236,10 @@ button svg {
 .explore-controls button:hover {
   text-decoration: underline;
 }
+.practice-export { display: flex; align-items: center; gap: 6px; width: 100%; padding-top: 8px; border-top: 1px solid #edf1ea; }
+.practice-export > span { margin-right: auto; color: #99a59b; font-size: 7px; font-weight: 800; letter-spacing: .8px; }
+.practice-export button { display: flex; align-items: center; gap: 4px; padding: 6px 7px; border: 1px solid #dce7d9; border-radius: 6px; background: #f7faf5; color: #557659; font-size: 8px; font-weight: 800; }
+.practice-export button:hover { border-color: #b9d3ae; background: #edf6e7; }
 .explore-controls {
   display: flex;
   align-items: center;
@@ -1898,6 +1903,10 @@ button svg {
 .coordinate-trainer > .vision-history { grid-column: 1; }
 .coordinate-trainer > .vision-course { grid-column: 2; grid-row: 1 / span 8; }
 .thinking-routine { grid-column: 1 / -1; }
+.thinking-routine-locked { display: grid; gap: 4px; background: linear-gradient(135deg, #f7faf4, #fff); }
+.thinking-routine-locked > .basics-tool-heading > svg { color: #8b9d8c; }
+.thinking-routine-locked .thinking-intro { max-width: 560px; }
+.thinking-routine-locked .primary-button { justify-self: start; margin-top: 8px; }
 .thinking-routine .thinking-habits { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .basics-tool-heading {
   display: flex;
