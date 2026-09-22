@@ -459,6 +459,8 @@ function makeGame(moves) {
 
 const escapeHtml = (value = "") => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const richTextPlain = (value = "") => value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+const EDITOR_FONTS = ["Georgia", "Arial", "Verdana", "Trebuchet MS", "Times New Roman", "Courier New"];
+const EDITOR_IMAGE_PLACEMENTS = ["wide", "center", "left", "right"];
 
 function sanitizeRichText(value = "") {
   if (!value.trim()) return "";
@@ -466,15 +468,19 @@ function sanitizeRichText(value = "") {
     return value.split(/\n\s*\n/).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("");
   }
   const documentValue = new DOMParser().parseFromString(value, "text/html");
-  const allowed = new Set(["P", "DIV", "BR", "B", "STRONG", "I", "EM", "FONT", "SPAN", "H2", "H3", "UL", "OL", "LI", "BLOCKQUOTE"]);
+  const allowed = new Set(["P", "DIV", "BR", "B", "STRONG", "I", "EM", "U", "FONT", "SPAN", "H2", "H3", "UL", "OL", "LI", "BLOCKQUOTE", "FIGURE", "IMG", "FIGCAPTION"]);
   [...documentValue.body.querySelectorAll("*")].forEach((element) => {
     if (!allowed.has(element.tagName)) {
       element.replaceWith(...element.childNodes);
       return;
     }
     [...element.attributes].forEach((attribute) => {
-      const approvedFont = element.tagName === "FONT" && attribute.name === "face" && ["Georgia", "Arial", "Courier New"].includes(attribute.value);
-      if (!approvedFont) element.removeAttribute(attribute.name);
+      const approvedFont = element.tagName === "FONT" && attribute.name === "face" && EDITOR_FONTS.includes(attribute.value);
+      const approvedSize = element.tagName === "FONT" && attribute.name === "size" && ["2", "3", "4", "5", "6"].includes(attribute.value);
+      const approvedImage = element.tagName === "IMG" && attribute.name === "src" && /^data:image\/(?:webp|png|jpe?g|gif);base64,/i.test(attribute.value);
+      const approvedAlt = element.tagName === "IMG" && attribute.name === "alt";
+      const approvedPlacement = element.tagName === "FIGURE" && attribute.name === "data-placement" && EDITOR_IMAGE_PLACEMENTS.includes(attribute.value);
+      if (!(approvedFont || approvedSize || approvedImage || approvedAlt || approvedPlacement)) element.removeAttribute(attribute.name);
     });
   });
   return documentValue.body.innerHTML;
@@ -496,13 +502,13 @@ function prepareImage(file) {
       const image = new Image();
       image.onerror = () => reject(new Error("The image could not be opened."));
       image.onload = () => {
-        const scale = Math.min(1, 1400 / image.width, 1000 / image.height);
+        const scale = Math.min(1, 1200 / image.width, 900 / image.height);
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.width * scale));
         canvas.height = Math.max(1, Math.round(image.height * scale));
         const context = canvas.getContext("2d");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/webp", .84));
+        resolve(canvas.toDataURL("image/webp", .78));
       };
       image.src = reader.result;
     };
@@ -731,15 +737,97 @@ function ArrowControls({ color, setColor, weight, setWeight, arrows, setArrows, 
 
 function RichTextEditor({ label, value, onChange, placeholder }) {
   const editorRef = useRef(null);
+  const savedRangeRef = useRef(null);
+  const selectedFigureRef = useRef(null);
+  const inlineInputId = useId().replace(/:/g, "");
+  const [imagePlacement, setImagePlacement] = useState("wide");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [hasSelectedImage, setHasSelectedImage] = useState(false);
   useEffect(() => {
     if (editorRef.current && document.activeElement !== editorRef.current && editorRef.current.innerHTML !== value) {
       editorRef.current.innerHTML = value;
     }
   }, [value]);
-  const applyFormat = (command, commandValue) => {
-    editorRef.current?.focus();
-    document.execCommand(command, false, commandValue);
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
+      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
+  };
+  const restoreSelection = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    if (savedRangeRef.current && editor.contains(savedRangeRef.current.commonAncestorContainer)) {
+      selection.addRange(savedRangeRef.current);
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.addRange(range);
+  };
+  const syncContent = () => {
     onChange(editorRef.current?.innerHTML || "");
+    rememberSelection();
+  };
+  const applyFormat = (command, commandValue) => {
+    restoreSelection();
+    document.execCommand(command, false, commandValue);
+    syncContent();
+  };
+  const insertImages = async (files) => {
+    const selectedFiles = [...files];
+    if (!selectedFiles.length) return;
+    if (selectedFiles.length > 12) {
+      setImageError("Add up to 12 images at a time.");
+      return;
+    }
+    setImageBusy(true);
+    setImageError("");
+    try {
+      const images = [];
+      for (const file of selectedFiles) images.push(await prepareImage(file));
+      restoreSelection();
+      images.forEach((source) => {
+        document.execCommand("insertHTML", false, `<figure data-placement="${imagePlacement}"><img src="${source}" alt="Published illustration"><figcaption data-placeholder="Add a caption"></figcaption></figure><p><br></p>`);
+      });
+      syncContent();
+    } catch (uploadError) {
+      setImageError(uploadError.message);
+    } finally {
+      setImageBusy(false);
+    }
+  };
+  const chooseEditorImage = (event) => {
+    const figure = event.target.closest?.("figure");
+    if (!figure || !editorRef.current?.contains(figure)) {
+      selectedFigureRef.current?.removeAttribute("data-editor-selected");
+      selectedFigureRef.current = null;
+      setHasSelectedImage(false);
+      return;
+    }
+    selectedFigureRef.current?.removeAttribute("data-editor-selected");
+    selectedFigureRef.current = figure;
+    figure.dataset.editorSelected = "true";
+    const placement = EDITOR_IMAGE_PLACEMENTS.includes(figure.dataset.placement) ? figure.dataset.placement : "wide";
+    setImagePlacement(placement);
+    setHasSelectedImage(true);
+  };
+  const placeSelectedImage = () => {
+    if (!selectedFigureRef.current) return;
+    selectedFigureRef.current.dataset.placement = imagePlacement;
+    syncContent();
+  };
+  const removeSelectedImage = () => {
+    if (!selectedFigureRef.current) return;
+    selectedFigureRef.current.remove();
+    selectedFigureRef.current = null;
+    setHasSelectedImage(false);
+    syncContent();
   };
   return (
     <div className="rich-editor-field">
@@ -747,12 +835,26 @@ function RichTextEditor({ label, value, onChange, placeholder }) {
       <div className="rich-editor-toolbar" aria-label={`${label} formatting`}>
         <button type="button" aria-label={`${label} bold`} title="Bold" onMouseDown={(event) => { event.preventDefault(); applyFormat("bold"); }}><Bold size={14} /></button>
         <button type="button" aria-label={`${label} italic`} title="Italic" onMouseDown={(event) => { event.preventDefault(); applyFormat("italic"); }}><Italic size={14} /></button>
+        <button type="button" aria-label={`${label} underline`} title="Underline" onMouseDown={(event) => { event.preventDefault(); applyFormat("underline"); }}><u>U</u></button>
         <span />
-        <button type="button" aria-label={`${label} serif font`} onMouseDown={(event) => { event.preventDefault(); applyFormat("fontName", "Georgia"); }}><Type size={13} /> Serif</button>
-        <button type="button" aria-label={`${label} sans font`} onMouseDown={(event) => { event.preventDefault(); applyFormat("fontName", "Arial"); }}>Sans</button>
-        <button type="button" aria-label={`${label} mono font`} onMouseDown={(event) => { event.preventDefault(); applyFormat("fontName", "Courier New"); }}>Mono</button>
+        <label className="editor-select"><Type size={13} /><select aria-label={`${label} font`} defaultValue="Georgia" onMouseDown={rememberSelection} onChange={(event) => applyFormat("fontName", event.target.value)}>{EDITOR_FONTS.map((font) => <option key={font}>{font}</option>)}</select></label>
+        <label className="editor-select size"><select aria-label={`${label} text size`} defaultValue="3" onMouseDown={rememberSelection} onChange={(event) => applyFormat("fontSize", event.target.value)}><option value="2">Small</option><option value="3">Normal</option><option value="4">Medium</option><option value="5">Large</option><option value="6">Extra large</option></select></label>
+        <label className="editor-select block"><select aria-label={`${label} text style`} defaultValue="p" onMouseDown={rememberSelection} onChange={(event) => applyFormat("formatBlock", event.target.value)}><option value="p">Paragraph</option><option value="h2">Heading</option><option value="h3">Subheading</option><option value="blockquote">Quote</option></select></label>
+        <span />
+        <button type="button" aria-label={`${label} bullet list`} title="Bullet list" onMouseDown={(event) => { event.preventDefault(); applyFormat("insertUnorderedList"); }}>• List</button>
+        <button type="button" aria-label={`${label} numbered list`} title="Numbered list" onMouseDown={(event) => { event.preventDefault(); applyFormat("insertOrderedList"); }}>1. List</button>
+        <button type="button" aria-label={`${label} clear formatting`} title="Clear formatting" onMouseDown={(event) => { event.preventDefault(); applyFormat("removeFormat"); }}>Clear</button>
+        <span />
+        <label className="editor-image-button" htmlFor={inlineInputId} onMouseDown={rememberSelection}><ImagePlus size={14} /> {imageBusy ? "Adding…" : "Add images"}</label>
+        <input id={inlineInputId} className="editor-image-input" type="file" accept="image/*" multiple aria-label={`${label} inline images`} onChange={(event) => { insertImages(event.target.files); event.target.value = ""; }} />
       </div>
-      <div ref={editorRef} className="rich-editor" role="textbox" aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning data-placeholder={placeholder} onInput={(event) => onChange(event.currentTarget.innerHTML)} />
+      <div className="editor-image-placement">
+        <label>Image position<select aria-label={`${label} image position`} value={imagePlacement} onChange={(event) => setImagePlacement(event.target.value)}><option value="wide">Full width</option><option value="center">Centered</option><option value="left">Float left</option><option value="right">Float right</option></select></label>
+        <small>{hasSelectedImage ? "Selected image ready to reposition." : "New images use this position and appear at your cursor."}</small>
+        {hasSelectedImage && <><button type="button" onClick={placeSelectedImage}>Apply position</button><button type="button" className="remove" onClick={removeSelectedImage}>Remove image</button></>}
+      </div>
+      {imageError && <small className="image-upload-error">{imageError}</small>}
+      <div ref={editorRef} className="rich-editor" role="textbox" aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning data-placeholder={placeholder} onInput={(event) => { onChange(event.currentTarget.innerHTML); rememberSelection(); }} onKeyUp={rememberSelection} onMouseUp={rememberSelection} onFocus={rememberSelection} onClick={chooseEditorImage} />
     </div>
   );
 }
@@ -1979,7 +2081,7 @@ function App() {
                 {!currentUser ? <button className="primary-button" onClick={() => chooseView("account")}><LogIn size={16} /> Sign in to your account</button> : <div className="premium-account"><User size={16} /><span>Signed in as <strong>{currentUser.name}</strong> · Standard account</span></div>}
               </section>
             ))}
-            {view === "articles" && (
+            {view === "articles" && (currentUser?.role === "admin" || currentUser?.premium ? (
               <>
                 <section className="articles-hero">
                   <div>
@@ -2010,7 +2112,15 @@ function App() {
                   <div className="articles-empty"><Lightbulb size={34} /><h2>The journal is ready for its first story.</h2><p>Articles published from the Admin panel will appear here.</p></div>
                 )}
               </>
-            )}
+            ) : (
+              <section className="premium-gate article-premium-gate">
+                <div className="premium-lock"><Lightbulb size={34} /></div>
+                <span className="eyebrow dark">PREMIUM JOURNAL</span>
+                <h1>Sharper ideas for<br />your next game.</h1>
+                <p>The ChessOn.Top journal is available to Premium members. Ask an administrator to enable Premium access for your account.</p>
+                {!currentUser ? <button className="primary-button" onClick={() => chooseView("account")}><LogIn size={16} /> Sign in to your account</button> : <div className="premium-account"><User size={16} /><span>Signed in as <strong>{currentUser.name}</strong> · Standard account</span></div>}
+              </section>
+            ))}
             {view === "account" && (
               !currentUser ? (
                 <section className="auth-page">
@@ -2084,7 +2194,7 @@ function App() {
                 {adminTab === "users" && <div className="admin-table-card"><div className="admin-section-heading"><div><span className="eyebrow dark">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div><span>{users.length} total</span></div>{users.length ? <div className="admin-table"><div className="admin-table-head"><span>User</span><span>Joined</span><span>Status</span><span>Actions</span></div>{users.map((user) => <div className="admin-table-row" key={user.id}><span className="admin-user"><i>{user.name[0]}</i><span><strong>{user.name}</strong><small>{user.email}</small></span></span><span>{new Date(user.joined).toLocaleDateString()}</span><span><em className={user.status === "disabled" ? "disabled" : "active"}>{user.status || "active"}</em></span><span className="admin-row-actions"><button className={`premium ${user.premium ? "active" : ""}`} onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, premium: !item.premium } : item))}><Sparkles size={15} />{user.premium ? "Premium" : "Make premium"}</button><button onClick={() => setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status: item.status === "disabled" ? "active" : "disabled" } : item))}>{user.status === "disabled" ? <Eye size={15} /> : <EyeOff size={15} />}{user.status === "disabled" ? "Enable" : "Disable"}</button><button className="danger" aria-label={`Delete ${user.name}`} onClick={() => setUsers((current) => current.filter((item) => item.id !== user.id))}><Trash2 size={15} /></button></span></div>)}</div> : <div className="admin-empty"><Users size={30} /><strong>No registered users yet</strong><span>New player accounts will appear here.</span></div>}</div>}
                 {adminTab === "books" && <div className="admin-books">
                   <form className="admin-book-form" onSubmit={addBook}>
-                    <div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>New book</h2><p>Publish a complete readable book for Premium members.</p></div>
+                    <div><span className="eyebrow dark">WRITE FOR THE SHELF</span><h2>New book</h2><p>Build a Premium book with a cover, formatted chapters, and images placed inside the text.</p></div>
                     <label>Title<input required value={newBook.title} onChange={(event) => setNewBook((current) => ({ ...current, title: event.target.value }))} placeholder="Book title" /></label>
                     <label>Author<input required value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label>
                     <label>Summary<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label>
@@ -2098,7 +2208,7 @@ function App() {
                 </div>}
                 {adminTab === "articles" && <div className="admin-articles">
                   <form className="admin-article-form" onSubmit={addArticle}>
-                    <div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>New article</h2><p>Share a lesson, plan, or game idea with every reader.</p></div>
+                    <div><span className="eyebrow dark">PUBLISH TO THE JOURNAL</span><h2>New article</h2><p>Publish a Premium article with rich typography and images placed through the story.</p></div>
                     <label>Title<input required value={newArticle.title} onChange={(event) => setNewArticle((current) => ({ ...current, title: event.target.value }))} placeholder="Article title" /></label>
                     <div className="admin-form-row"><label>Author<input value={newArticle.author} onChange={(event) => setNewArticle((current) => ({ ...current, author: event.target.value }))} placeholder="CO.T Editorial" /></label><label>Category<select value={newArticle.category} onChange={(event) => setNewArticle((current) => ({ ...current, category: event.target.value }))}><option>Strategy</option><option>Openings</option><option>Tactics</option><option>Endgames</option><option>Mindset</option></select></label></div>
                     <label>Short summary<textarea className="summary-field" value={newArticle.summary} onChange={(event) => setNewArticle((current) => ({ ...current, summary: event.target.value }))} placeholder="A short introduction for the article card" maxLength={220} /></label>

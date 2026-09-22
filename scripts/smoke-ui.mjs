@@ -94,6 +94,10 @@ try {
   assert.equal(await page.locator(".book-card").count(), 0);
   await page.screenshot({ path: resolve(output, "books.png"), fullPage: true });
 
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
+  await page.getByRole("heading", { name: /Sharper ideas/ }).waitFor();
+  assert.equal(await page.locator(".article-card").count(), 0);
+
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
   await page.screenshot({ path: resolve(output, "sign-in.png"), fullPage: true });
   await page.getByRole("button", { name: "Create account" }).click();
@@ -124,6 +128,9 @@ try {
   await page.screenshot({ path: resolve(output, "profile.png"), fullPage: true });
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
   assert.match(await page.locator(".premium-account").innerText(), /Standard account/);
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
+  assert.match(await page.locator(".premium-account").innerText(), /Standard account/);
+  assert.equal(await page.locator(".article-card").count(), 0);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "My account" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("textbox", { name: "Email or username" }).fill("Admin");
@@ -146,8 +153,20 @@ try {
   await page.getByRole("button", { name: "Book content bold" }).click();
   assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<(b|strong)>/i);
   await bookEditor.press("Control+A");
-  await page.getByRole("button", { name: "Book content serif font" }).click();
-  assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<font[^>]+face=["']?Georgia/i);
+  await page.getByLabel("Book content font").selectOption("Times New Roman");
+  assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<font[^>]+face=["']?Times New Roman/i);
+  await bookEditor.press("Control+A");
+  await page.getByLabel("Book content text size").selectOption("5");
+  assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<font[^>]+size=["']?5/i);
+  await bookEditor.press("End");
+  await page.getByLabel("Book content image position").selectOption("left");
+  await page.getByLabel("Book content inline images").setInputFiles([resolve(root, "public/pieces/wQ.svg"), resolve(root, "public/pieces/wR.svg")]);
+  await page.waitForFunction(() => document.querySelectorAll(".admin-book-form .rich-editor figure").length === 2);
+  assert.equal(await bookEditor.locator('figure[data-placement="left"]').count(), 2);
+  await bookEditor.locator("figure img").first().click();
+  await page.getByLabel("Book content image position").selectOption("right");
+  await page.getByRole("button", { name: "Apply position" }).click();
+  assert.equal(await bookEditor.locator('figure[data-placement="right"]').count(), 1);
   await page.getByRole("button", { name: "Publish book" }).click();
   await page.getByText("Winning Chess Habits", { exact: true }).waitFor();
   await page.screenshot({ path: resolve(output, "admin-books.png"), fullPage: true });
@@ -161,6 +180,13 @@ try {
   await articleEditor.press("Control+A");
   await page.getByRole("button", { name: "Article content italic" }).click();
   assert.match(await articleEditor.evaluate((editor) => editor.innerHTML), /<(i|em)>/i);
+  await articleEditor.press("Control+A");
+  await page.getByLabel("Article content font").selectOption("Verdana");
+  await articleEditor.press("End");
+  await page.getByLabel("Article content image position").selectOption("center");
+  await page.getByLabel("Article content inline images").setInputFiles([resolve(root, "public/pieces/wB.svg"), resolve(root, "public/pieces/wN.svg")]);
+  await page.waitForFunction(() => document.querySelectorAll(".admin-article-form .rich-editor figure").length === 2);
+  assert.equal(await articleEditor.locator('figure[data-placement="center"]').count(), 2);
   await page.getByRole("button", { name: "Publish article" }).click();
   await page.getByText("Three questions before every move", { exact: true }).waitFor();
   await page.screenshot({ path: resolve(output, "admin-articles.png"), fullPage: true });
@@ -182,6 +208,13 @@ try {
   await page.screenshot({ path: resolve(output, "admin.png"), fullPage: true });
   await page.locator(".admin-header").getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
+  await page.getByRole("heading", { name: /Sharper ideas/ }).waitFor();
+  assert.equal(await page.locator(".article-card").count(), 0);
+  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  await page.getByRole("textbox", { name: "Email or username" }).fill("player@example.com");
+  await page.locator('input[aria-label="Password"]').fill("StrongPass9!");
+  await page.locator(".auth-submit").click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Articles" }).click();
   await page.getByRole("heading", { name: "Three questions before every move" }).waitFor();
   assert.equal(await page.locator(".article-card-image").count(), 1);
   await page.getByRole("button", { name: "Read article" }).click();
@@ -189,11 +222,8 @@ try {
   await articleReader.waitFor();
   assert.equal(await articleReader.locator(".reader-hero-image").count(), 1);
   assert.ok((await articleReader.locator(".reader-content i, .reader-content em").count()) > 0);
+  assert.equal(await articleReader.locator(".reader-content figure").count(), 2);
   await page.getByRole("button", { name: "Close article" }).click();
-  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("textbox", { name: "Email or username" }).fill("player@example.com");
-  await page.locator('input[aria-label="Password"]').fill("StrongPass9!");
-  await page.locator(".auth-submit").click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Books" }).click();
   await page.locator(".book-card h3", { hasText: "Winning Chess Habits" }).waitFor();
   assert.equal(await page.locator(".book-card").count(), 1);
@@ -203,7 +233,9 @@ try {
   await bookReader.waitFor();
   assert.equal(await bookReader.locator(".reader-hero-image").count(), 1);
   assert.ok((await bookReader.locator(".reader-content b, .reader-content strong").count()) > 0);
-  assert.ok((await bookReader.locator('.reader-content font[face="Georgia"]').count()) > 0);
+  assert.ok((await bookReader.locator('.reader-content font[face="Times New Roman"]').count()) > 0);
+  assert.equal(await bookReader.locator(".reader-content figure").count(), 2);
+  assert.equal(await bookReader.locator('figure[data-placement="right"]').count(), 1);
   await page.getByRole("button", { name: "Close book" }).click();
   await page.getByRole("button", { name: "Overview" }).click();
   assert.equal(await page.locator(".study-panel").count(), 0);
