@@ -46,6 +46,22 @@ try {
 
   await page.getByRole("button", { name: "Opening library" }).click();
   await page.locator(".board-wrap .piece").first().waitFor();
+  const arrowFrom = await page.locator('.board-wrap [data-square="e2"]').boundingBox();
+  const arrowTo = await page.locator('.board-wrap [data-square="e4"]').boundingBox();
+  assert.ok(arrowFrom && arrowTo);
+  await page.mouse.move(arrowFrom.x + arrowFrom.width / 2, arrowFrom.y + arrowFrom.height / 2);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(arrowTo.x + arrowTo.width / 2, arrowTo.y + arrowTo.height / 2, { steps: 6 });
+  await page.mouse.up({ button: "right" });
+  assert.equal(await page.locator(".board-wrap .board-arrow").count(), 1);
+  await page.screenshot({ path: resolve(output, "board-arrow.png"), fullPage: true });
+  await page.getByRole("button", { name: "Enlarge board" }).click();
+  const annotatedFocusBoard = page.getByRole("dialog", { name: "Large chess board" });
+  await annotatedFocusBoard.waitFor();
+  assert.equal(await annotatedFocusBoard.locator(".board-arrow").count(), 1);
+  await annotatedFocusBoard.getByRole("button", { name: "Close large board" }).click();
+  await page.getByRole("button", { name: "Clear board arrows" }).click();
+  assert.equal(await page.locator(".board-wrap .board-arrow").count(), 0);
   assert.match(await page.locator(".opening-discovery").innerText(), /Opening explorer/i);
   await page.getByLabel("Sort openings").selectOption("name");
   await page.getByRole("button", { name: "Sicilian" }).click();
@@ -73,7 +89,13 @@ try {
   await page.getByRole("button", { name: "Create my account" }).click();
   await page.getByRole("heading", { name: "Welcome, Test Player." }).waitFor();
   assert.equal(await page.locator(".account-stats > div").count(), 4);
-  assert.equal(await page.locator(".profile-theme-picker button").count(), 3);
+  assert.equal(await page.locator(".profile-preferences .appearance-theme").count(), 5);
+  await page.getByRole("button", { name: "Use Ocean board" }).click();
+  assert.equal(await page.getByRole("button", { name: "Use Ocean board" }).getAttribute("class"), "appearance-theme ocean active");
+  const coordinatePreference = page.getByRole("switch", { name: "Show board coordinates" });
+  await coordinatePreference.click();
+  assert.equal(await coordinatePreference.getAttribute("aria-checked"), "false");
+  await coordinatePreference.click();
   await page.getByLabel("Full name").fill("Test Strategist");
   await page.getByLabel("Country").fill("Iran");
   await page.getByLabel("FIDE rating").fill("1820");
@@ -125,8 +147,8 @@ try {
   await registrationSwitch.click();
   assert.equal(await registrationSwitch.getAttribute("aria-checked"), "false");
   await registrationSwitch.click();
-  await page.getByRole("button", { name: "Use slate board" }).click();
-  assert.equal(await page.getByRole("button", { name: "Use slate board" }).getAttribute("class"), "slate active");
+  await page.getByRole("button", { name: "Use Slate board" }).click();
+  assert.match(await page.getByRole("button", { name: "Use Slate board" }).getAttribute("class"), /active/);
   assert.equal(await page.getByRole("button", { name: "Download snapshot" }).count(), 1);
   await page.screenshot({ path: resolve(output, "admin.png"), fullPage: true });
   await page.locator(".admin-header").getByRole("button", { name: "Sign out" }).click();
@@ -171,11 +193,15 @@ try {
   assert.equal(await page.locator(".study-panel").count(), 0);
   assert.equal(await page.locator(".thinking-habit").count(), 4);
   assert.equal(await page.locator(".basics-drill").count(), 1);
+  assert.equal(await page.locator(".basics-drill .drill-progress span").count(), 10);
   await page.locator(".basics-drill").getByRole("button", { name: /e4/ }).click();
   assert.match(await page.locator(".basics-drill").innerText(), /Correct\./);
   assert.match(await page.locator(".basics-drill .coordinate-score").innerText(), /1 correct/);
   await page.getByRole("button", { name: "Square e4" }).click();
-  assert.match(await page.locator(".coordinate-trainer .coordinate-score").innerText(), /1 correct · 1 tries/);
+  assert.match(await page.locator(".coordinate-trainer .vision-stats").innerText(), /Accuracy\s+100%.*Current streak\s+1/is);
+  await page.getByRole("tab", { name: /Color call/ }).click();
+  await page.getByRole("button", { name: "Light square" }).click();
+  assert.match(await page.locator(".coordinate-trainer .vision-stats").innerText(), /Best streak\s+2/is);
   await page.getByRole("button", { name: /Meet the pieces/ }).click();
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
   await page.locator(".checkpoint-options button").nth(1).click();
@@ -185,6 +211,26 @@ try {
     path: resolve(output, "basics.png"),
     fullPage: true,
   });
+  const sprint = page.locator(".basics-drill");
+  await sprint.getByRole("button", { name: /Next question/ }).click();
+  const sprintAnswers = [
+    "Knight",
+    "Your opponent’s threat",
+    "After castling",
+    "Attacks two targets",
+    "5",
+    "Castling",
+    "A pawn with no enemy pawn able to stop it",
+    "Defend or move it",
+    "Checks, captures, threats",
+  ];
+  for (const [index, answer] of sprintAnswers.entries()) {
+    await sprint.locator(".drill-options button").filter({ hasText: answer }).click();
+    await sprint.getByRole("button", { name: index === sprintAnswers.length - 1 ? /See results/ : /Next question/ }).click();
+  }
+  await sprint.getByText("SPRINT COMPLETE").waitFor();
+  assert.match(await sprint.innerText(), /10\/10.*best streak of 10/s);
+  await page.screenshot({ path: resolve(output, "foundation-sprint-complete.png"), fullPage: true });
   await page.getByRole("button", { name: "Opening library" }).click();
   await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
   await page.locator('.board-wrap [aria-label="e4"]').click();

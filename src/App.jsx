@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Chess } from "chess.js";
 import {
   ArrowRight,
@@ -338,6 +338,11 @@ const BASICS_DRILLS = [
   { question: "What should you check before planning your move?", choices: ["The clock color", "Your opponent’s threat", "Your captured pieces"], answer: 1, note: "Start with your opponent’s last move and identify every immediate threat." },
   { question: "What is usually the safest early home for your king?", choices: ["The center", "After castling", "In front of a pawn"], answer: 1, note: "Castling usually moves the king away from the open center and activates a rook." },
   { question: "A fork is a move that…", choices: ["Attacks two targets", "Trades every pawn", "Ends in a draw"], answer: 0, note: "A fork creates two or more threats with one piece." },
+  { question: "How many points is a rook usually worth?", choices: ["3", "5", "9"], answer: 1, note: "A rook is usually valued at five pawns, though activity and king safety still matter." },
+  { question: "Which move helps connect your rooks?", choices: ["Castling", "Moving a rook pawn", "Repeating a knight move"], answer: 0, note: "Castling protects the king and helps the rooks begin working together." },
+  { question: "What is a passed pawn?", choices: ["A pawn with no enemy pawn able to stop it", "Any pawn on the fifth rank", "A pawn protected by a queen"], answer: 0, note: "A passed pawn has no opposing pawn ahead on its file or either adjacent file." },
+  { question: "What should you do with a loose piece?", choices: ["Ignore it", "Defend or move it", "Move your king"], answer: 1, note: "Loose pieces often become tactical targets, so defend or improve them before they are attacked." },
+  { question: "Which sequence is the best tactical scan?", choices: ["Checks, captures, threats", "Pawns, rooks, clocks", "Files, ranks, colors"], answer: 0, note: "Checks, captures, and threats reveal forcing moves before quieter plans." },
 ];
 const pieceCode = { k: "K", q: "Q", r: "R", b: "B", n: "N", p: "P" };
 const pieceName = {
@@ -356,6 +361,14 @@ const PRACTICE_STYLES = [
   { id: "recall", title: "Recall drill", detail: "No move dots. Trust your memory", icon: Zap },
   { id: "challenge", title: "Challenge run", detail: "No hints. Count every miss", icon: Timer },
 ];
+const BOARD_THEMES = [
+  { id: "moss", label: "Moss", detail: "Soft tournament green" },
+  { id: "wood", label: "Walnut", detail: "Warm classic board" },
+  { id: "slate", label: "Slate", detail: "Quiet neutral contrast" },
+  { id: "ocean", label: "Ocean", detail: "Fresh blue teal" },
+  { id: "sand", label: "Sand", detail: "Bright natural stone" },
+];
+const VISION_SQUARES = ["e4", "c6", "f2", "b7", "g5", "a3", "h6", "d8", "e1", "b4", "f7", "c2"];
 
 function readLocal(key, fallback) {
   try {
@@ -416,8 +429,14 @@ function Board({
   interactiveColor = game.turn(),
   theme = "moss",
   showLegalMoves = true,
+  showCoordinates = true,
+  showLastMove = true,
+  arrows = [],
+  onArrowsChange,
   compact = false,
 }) {
+  const markerId = useId().replace(/:/g, "");
+  const [arrowDraft, setArrowDraft] = useState(null);
   const ranks =
     orientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
   const orderedFiles = orientation === "w" ? files : [...files].reverse();
@@ -431,11 +450,56 @@ function Board({
         .map((move) => move.to)
     : [];
 
+  const squareFromPointer = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const column = Math.max(0, Math.min(7, Math.floor(((event.clientX - rect.left) / rect.width) * 8)));
+    const row = Math.max(0, Math.min(7, Math.floor(((event.clientY - rect.top) / rect.height) * 8)));
+    return `${orderedFiles[column]}${ranks[row]}`;
+  };
+  const squareCenter = (square) => {
+    const fileIndex = files.indexOf(square[0]);
+    const rank = Number(square[1]);
+    const column = orientation === "w" ? fileIndex : 7 - fileIndex;
+    const row = orientation === "w" ? 8 - rank : rank - 1;
+    return { x: (column + 0.5) * 12.5, y: (row + 0.5) * 12.5 };
+  };
+  const visibleArrows = arrowDraft?.from && arrowDraft?.to
+    ? [...arrows, { ...arrowDraft, draft: true }]
+    : arrows;
+
   return (
     <div
       className={`board board-${theme} ${compact ? "board-compact" : ""}`}
       role="grid"
       aria-label={`Chess board, ${orientation === "w" ? "White" : "Black"} at bottom`}
+      onContextMenu={(event) => !compact && event.preventDefault()}
+      onPointerDown={(event) => {
+        if (compact || event.button !== 2 || !onArrowsChange) return;
+        event.preventDefault();
+        const from = squareFromPointer(event);
+        setArrowDraft({ from, to: from });
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!arrowDraft) return;
+        const to = squareFromPointer(event);
+        if (to !== arrowDraft.to) setArrowDraft((current) => current ? { ...current, to } : current);
+      }}
+      onPointerUp={(event) => {
+        if (!arrowDraft || event.button !== 2 || !onArrowsChange) return;
+        event.preventDefault();
+        const to = squareFromPointer(event);
+        if (arrowDraft.from === to) {
+          onArrowsChange([]);
+        } else {
+          onArrowsChange((current) => current.some((arrow) => arrow.from === arrowDraft.from && arrow.to === to)
+            ? current.filter((arrow) => arrow.from !== arrowDraft.from || arrow.to !== to)
+            : [...current, { from: arrowDraft.from, to }]);
+        }
+        setArrowDraft(null);
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+      }}
+      onPointerCancel={() => setArrowDraft(null)}
     >
       {ranks.flatMap((rank, rowIndex) =>
         orderedFiles.map((file, colIndex) => {
@@ -446,9 +510,10 @@ function Board({
           return (
             <button
               key={square}
+              data-square={square}
               type="button"
               role="gridcell"
-              className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "selected" : ""} ${lastMove?.from === square ? "last-move last-from" : ""} ${lastMove?.to === square ? "last-move last-to" : ""} ${checkedKing === square ? "in-check" : ""}`}
+              className={`square ${isLight ? "light" : "dark"} ${selectedSquare === square ? "selected" : ""} ${showLastMove && lastMove?.from === square ? "last-move last-from" : ""} ${showLastMove && lastMove?.to === square ? "last-move last-to" : ""} ${checkedKing === square ? "in-check" : ""}`}
               onClick={() => !compact && onSquareClick(square)}
               onDragOver={(event) => !compact && event.preventDefault()}
               onDrop={(event) => {
@@ -460,10 +525,10 @@ function Board({
               aria-label={`${square}${piece ? ` ${piece.color === "w" ? "white" : "black"} ${pieceName[piece.type]}` : ""}`}
               tabIndex={compact ? -1 : 0}
             >
-              {colIndex === 0 && (
+              {showCoordinates && colIndex === 0 && (
                 <span className="coordinate rank">{rank}</span>
               )}
-              {rowIndex === 7 && (
+              {showCoordinates && rowIndex === 7 && (
                 <span className="coordinate file">{file}</span>
               )}
               {legal.includes(square) && !compact && showLegalMoves && (
@@ -484,6 +549,20 @@ function Board({
             </button>
           );
         }),
+      )}
+      {!compact && visibleArrows.length > 0 && (
+        <svg className="board-arrows" viewBox="0 0 100 100" aria-label={`${arrows.length} board ${arrows.length === 1 ? "arrow" : "arrows"}`}>
+          <defs>
+            <marker id={`${markerId}-head`} markerWidth="4" markerHeight="4" refX="3.3" refY="2" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L4,2 L0,4 Z" />
+            </marker>
+          </defs>
+          {visibleArrows.map((arrow, index) => {
+            const from = squareCenter(arrow.from);
+            const to = squareCenter(arrow.to);
+            return <line key={`${arrow.from}-${arrow.to}-${index}`} className={`board-arrow ${arrow.draft ? "draft" : ""}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} markerEnd={`url(#${markerId}-head)`} />;
+          })}
+        </svg>
       )}
     </div>
   );
@@ -508,6 +587,30 @@ function MiniBoard({ opening }) {
   );
 }
 
+function AppearanceControls({ theme, setTheme, showCoordinates, setShowCoordinates, showLastMove, setShowLastMove }) {
+  const previewGame = useMemo(() => makeGame(["e4", "c5", "Nf3"]), []);
+  const selectedTheme = BOARD_THEMES.find((item) => item.id === theme) || BOARD_THEMES[0];
+  return (
+    <div className="appearance-controls">
+      <div className="appearance-preview">
+        <div className="appearance-preview-board"><Board game={previewGame} orientation="w" compact theme={theme} showCoordinates={showCoordinates} showLastMove={showLastMove} /></div>
+        <div><span>LIVE BOARD</span><strong>{selectedTheme.label}</strong><small>{selectedTheme.detail}</small></div>
+      </div>
+      <div className="appearance-theme-grid">
+        {BOARD_THEMES.map((item) => (
+          <button key={item.id} type="button" className={`appearance-theme ${item.id} ${theme === item.id ? "active" : ""}`} onClick={() => setTheme(item.id)} aria-label={`Use ${item.label} board`}>
+            <span className="appearance-swatch" /><span><strong>{item.label}</strong><small>{item.detail}</small></span>{theme === item.id && <Check size={14} />}
+          </button>
+        ))}
+      </div>
+      <div className="appearance-options">
+        <div><span><strong>Board coordinates</strong><small>Show files and ranks around the board.</small></span><button type="button" role="switch" aria-label="Show board coordinates" aria-checked={showCoordinates} className={`appearance-switch ${showCoordinates ? "on" : ""}`} onClick={() => setShowCoordinates(!showCoordinates)}><span /></button></div>
+        <div><span><strong>Last move highlight</strong><small>Keep the previous move visible while studying.</small></span><button type="button" role="switch" aria-label="Highlight last move" aria-checked={showLastMove} className={`appearance-switch ${showLastMove ? "on" : ""}`} onClick={() => setShowLastMove(!showLastMove)}><span /></button></div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState("overview");
   const [search, setSearch] = useState("");
@@ -519,9 +622,13 @@ function App() {
   const [activeLesson, setActiveLesson] = useState(0);
   const [basicAnswers, setBasicAnswers] = useState({});
   const [coordinateTarget, setCoordinateTarget] = useState("e4");
-  const [coordinateScore, setCoordinateScore] = useState({ correct: 0, tries: 0 });
+  const [coordinateScore, setCoordinateScore] = useState({ correct: 0, tries: 0, streak: 0, best: 0 });
   const [coordinateFeedback, setCoordinateFeedback] = useState("Find the square before you click.");
-  const [basicsDrill, setBasicsDrill] = useState({ index: 0, choice: null, score: 0 });
+  const [visionMode, setVisionMode] = useState("find");
+  const [visionOrientation, setVisionOrientation] = useState("w");
+  const [visionCoordinates, setVisionCoordinates] = useState(true);
+  const [visionHistory, setVisionHistory] = useState([]);
+  const [basicsDrill, setBasicsDrill] = useState({ index: 0, choice: null, score: 0, streak: 0, bestStreak: 0, answered: 0, started: false, secondsLeft: 180, complete: false });
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
@@ -540,6 +647,9 @@ function App() {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [orientation, setOrientation] = useState("w");
   const [boardTheme, setBoardTheme] = useStoredValue("cot-board-theme", "moss");
+  const [showBoardCoordinates, setShowBoardCoordinates] = useStoredValue("cot-board-coordinates", true);
+  const [showLastMove, setShowLastMove] = useStoredValue("cot-board-last-move", true);
+  const [boardArrows, setBoardArrows] = useState([]);
   const [boardFocus, setBoardFocus] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -585,6 +695,15 @@ function App() {
     });
     setProfileMessage("");
   }, [currentUser?.id]);
+  useEffect(() => {
+    if (!basicsDrill.started || basicsDrill.complete) return;
+    if (basicsDrill.secondsLeft <= 0) {
+      setBasicsDrill((current) => ({ ...current, complete: true }));
+      return;
+    }
+    const timer = setTimeout(() => setBasicsDrill((current) => ({ ...current, secondsLeft: current.secondsLeft - 1 })), 1000);
+    return () => clearTimeout(timer);
+  }, [basicsDrill.started, basicsDrill.complete, basicsDrill.secondsLeft]);
 
   const opening = OPENING_BY_ID.get(selectedId) || DEFAULT_OPENING;
   const notes = familyNotes.find((note) =>
@@ -1061,15 +1180,67 @@ function App() {
     setCoordinateScore((current) => ({
       correct: current.correct + (correct ? 1 : 0),
       tries: current.tries + 1,
+      streak: correct ? current.streak + 1 : 0,
+      best: correct ? Math.max(current.best, current.streak + 1) : current.best,
     }));
+    setVisionHistory((current) => [{ square, correct }, ...current].slice(0, 6));
     if (!correct) {
       setCoordinateFeedback(`${square} is not it. Keep looking for ${coordinateTarget}.`);
       return;
     }
-    const nextSquares = ["c6", "f2", "b7", "g5", "a3", "h6", "d8", "e1"];
-    const next = nextSquares[coordinateScore.correct % nextSquares.length];
+    const next = VISION_SQUARES[(VISION_SQUARES.indexOf(coordinateTarget) + 1) % VISION_SQUARES.length];
     setCoordinateFeedback(`Correct — that was ${coordinateTarget}. Now find ${next}.`);
     setCoordinateTarget(next);
+  }
+
+  function answerSquareColor(answer) {
+    const isLight = (files.indexOf(coordinateTarget[0]) + Number(coordinateTarget[1])) % 2 === 0;
+    const correct = answer === (isLight ? "light" : "dark");
+    const previous = coordinateTarget;
+    const next = VISION_SQUARES[(VISION_SQUARES.indexOf(previous) + 1) % VISION_SQUARES.length];
+    setCoordinateScore((current) => ({
+      correct: current.correct + (correct ? 1 : 0),
+      tries: current.tries + 1,
+      streak: correct ? current.streak + 1 : 0,
+      best: correct ? Math.max(current.best, current.streak + 1) : current.best,
+    }));
+    setVisionHistory((current) => [{ square: previous, correct }, ...current].slice(0, 6));
+    setCoordinateFeedback(`${previous} is a ${isLight ? "light" : "dark"} square${correct ? " — correct." : "."} Next: ${next}.`);
+    setCoordinateTarget(next);
+  }
+
+  function resetBoardVision() {
+    setCoordinateTarget("e4");
+    setCoordinateScore({ correct: 0, tries: 0, streak: 0, best: 0 });
+    setCoordinateFeedback(visionMode === "find" ? "Find the square before you click." : "Name the square color without using the board.");
+    setVisionHistory([]);
+  }
+
+  function answerBasicsDrill(index) {
+    setBasicsDrill((current) => {
+      if (current.choice !== null || current.complete) return current;
+      const correct = index === BASICS_DRILLS[current.index].answer;
+      const streak = correct ? current.streak + 1 : 0;
+      return {
+        ...current,
+        choice: index,
+        score: current.score + (correct ? 1 : 0),
+        streak,
+        bestStreak: Math.max(current.bestStreak, streak),
+        answered: current.answered + 1,
+        started: true,
+      };
+    });
+  }
+
+  function nextBasicsDrill() {
+    setBasicsDrill((current) => current.answered >= BASICS_DRILLS.length
+      ? { ...current, complete: true }
+      : { ...current, index: current.index + 1, choice: null });
+  }
+
+  function restartBasicsDrill() {
+    setBasicsDrill({ index: 0, choice: null, score: 0, streak: 0, bestStreak: 0, answered: 0, started: false, secondsLeft: 180, complete: false });
   }
 
   return (
@@ -1441,33 +1612,44 @@ function App() {
                 </section>
                 <div className="basics-lab">
                   <section className="coordinate-trainer">
-                    <div className="basics-tool-heading">
-                      <div>
-                        <span className="eyebrow dark">BOARD VISION</span>
-                        <h2>Find <strong>{coordinateTarget}</strong></h2>
-                      </div>
-                      <span className="coordinate-score">{coordinateScore.correct} correct · {coordinateScore.tries} tries</span>
+                    <div className="vision-header">
+                      <div><span className="eyebrow dark">BOARD VISION LAB</span><h2>{visionMode === "find" ? <>Find <strong>{coordinateTarget}</strong></> : <>What color is <strong>{coordinateTarget}</strong>?</>}</h2><p>Build a mental map of every file, rank, and square.</p></div>
+                      <button className="vision-reset" onClick={resetBoardVision}><RotateCcw size={14} /> Reset</button>
                     </div>
-                    <div className="coordinate-board" role="group" aria-label={`Find square ${coordinateTarget}`}>
-                      {[8, 7, 6, 5, 4, 3, 2, 1].flatMap((rank, rowIndex) =>
-                        files.map((file, columnIndex) => {
+                    <div className="vision-mode-tabs" role="tablist" aria-label="Board vision mode">
+                      <button role="tab" aria-selected={visionMode === "find"} className={visionMode === "find" ? "active" : ""} onClick={() => { setVisionMode("find"); setCoordinateFeedback("Find the square before you click."); }}>Square hunt<span>Locate a coordinate</span></button>
+                      <button role="tab" aria-selected={visionMode === "color"} className={visionMode === "color" ? "active" : ""} onClick={() => { setVisionMode("color"); setCoordinateFeedback("Name the square color without using the board."); }}>Color call<span>See the board mentally</span></button>
+                    </div>
+                    <div className="vision-stats">
+                      <div><span>Accuracy</span><strong>{coordinateScore.tries ? Math.round((coordinateScore.correct / coordinateScore.tries) * 100) : 0}%</strong></div>
+                      <div><span>Current streak</span><strong>{coordinateScore.streak}</strong></div>
+                      <div><span>Best streak</span><strong>{coordinateScore.best}</strong></div>
+                    </div>
+                    {visionMode === "find" ? <div className="coordinate-board" role="group" aria-label={`Find square ${coordinateTarget}`}>
+                      {(visionOrientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8]).flatMap((rank, rowIndex) =>
+                        (visionOrientation === "w" ? files : [...files].reverse()).map((file, columnIndex) => {
                           const square = `${file}${rank}`;
                           return (
                             <button
                               type="button"
                               key={square}
-                              className={(rowIndex + columnIndex) % 2 === 0 ? "light" : "dark"}
+                              className={(files.indexOf(file) + rank) % 2 === 0 ? "light" : "dark"}
                               aria-label={`Square ${square}`}
                               onClick={() => chooseCoordinate(square)}
                             >
-                              {columnIndex === 0 && <span className="coordinate-rank">{rank}</span>}
-                              {rowIndex === 7 && <span className="coordinate-file">{file}</span>}
+                              {visionCoordinates && columnIndex === 0 && <span className="coordinate-rank">{rank}</span>}
+                              {visionCoordinates && rowIndex === 7 && <span className="coordinate-file">{file}</span>}
                             </button>
                           );
                         }),
                       )}
+                    </div> : <div className="vision-color-challenge"><span>PICTURE THE BOARD</span><strong>{coordinateTarget}</strong><p>Start from a1 as a dark square and alternate across files and ranks.</p><div><button onClick={() => answerSquareColor("light")}><span className="light" /> Light square</button><button onClick={() => answerSquareColor("dark")}><span className="dark" /> Dark square</button></div></div>}
+                    <div className="vision-board-tools">
+                      <button onClick={() => setVisionOrientation((current) => current === "w" ? "b" : "w")}><FlipHorizontal size={14} /> {visionOrientation === "w" ? "White" : "Black"} side</button>
+                      <button className={visionCoordinates ? "active" : ""} onClick={() => setVisionCoordinates((current) => !current)}><Compass size={14} /> Coordinates {visionCoordinates ? "on" : "off"}</button>
                     </div>
                     <p className="coordinate-feedback" aria-live="polite">{coordinateFeedback}</p>
+                    <div className="vision-history"><span>RECENT</span>{visionHistory.length ? visionHistory.map((item, index) => <i key={`${item.square}-${index}`} className={item.correct ? "correct" : "wrong"}>{item.square}{item.correct ? <Check size={10} /> : <X size={10} />}</i>) : <small>Your attempts will appear here.</small>}</div>
                   </section>
                   <section className="thinking-routine">
                     <div className="basics-tool-heading">
@@ -1487,17 +1669,20 @@ function App() {
                     </div>
                   </section>
                   <section className="basics-drill">
-                    <div className="drill-visual" aria-hidden="true"><span>3</span><Timer size={25} /><small>MINUTE<br />SPRINT</small></div>
+                    <div className="drill-visual"><span>{String(Math.floor(basicsDrill.secondsLeft / 60)).padStart(2, "0")}:{String(basicsDrill.secondsLeft % 60).padStart(2, "0")}</span><Timer size={25} /><small>{basicsDrill.started ? "TIME REMAINING" : "STARTS WITH YOUR FIRST ANSWER"}</small><div><strong>{basicsDrill.streak}</strong><small>CURRENT STREAK</small></div></div>
                     <div className="drill-content">
-                      <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>Turn ideas into quick recall</h2></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
-                      <div className="drill-progress" aria-label={`Question ${basicsDrill.index + 1} of ${BASICS_DRILLS.length}`}>{BASICS_DRILLS.map((_, index) => <span key={index} className={index <= basicsDrill.index ? "active" : ""} />)}</div>
-                      <h3>{drill.question}</h3>
-                      <div className="drill-options">
-                        {drill.choices.map((choice, index) => (
-                          <button key={choice} disabled={basicsDrill.choice !== null} className={basicsDrill.choice === index ? index === drill.answer ? "correct" : "wrong" : basicsDrill.choice !== null && index === drill.answer ? "correct" : ""} onClick={() => setBasicsDrill((current) => ({ ...current, choice: index, score: current.score + (index === drill.answer ? 1 : 0) }))}><span>{String.fromCharCode(65 + index)}</span>{choice}</button>
-                        ))}
-                      </div>
-                      {basicsDrill.choice !== null && <div className={`drill-result ${basicsDrill.choice === drill.answer ? "correct" : ""}`}><span>{basicsDrill.choice === drill.answer ? <Check size={16} /> : <X size={16} />}</span><p><strong>{basicsDrill.choice === drill.answer ? "Correct." : "Keep this one in mind."}</strong> {drill.note}</p><button onClick={() => setBasicsDrill((current) => ({ ...current, index: (current.index + 1) % BASICS_DRILLS.length, choice: null }))}>Next question <ArrowRight size={15} /></button></div>}
+                      <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>Ten questions. Three minutes.</h2><p className="drill-intro">Train essential rules under light time pressure and build a clean recall streak.</p></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
+                      {!basicsDrill.complete ? <>
+                        <div className="drill-status"><span>Question {basicsDrill.index + 1} of {BASICS_DRILLS.length}</span><span>Best streak <strong>{basicsDrill.bestStreak}</strong></span></div>
+                        <div className="drill-progress" aria-label={`Question ${basicsDrill.index + 1} of ${BASICS_DRILLS.length}`}>{BASICS_DRILLS.map((_, index) => <span key={index} className={`${index < basicsDrill.answered ? "complete" : ""} ${index === basicsDrill.index ? "active" : ""}`} />)}</div>
+                        <h3>{drill.question}</h3>
+                        <div className="drill-options">
+                          {drill.choices.map((choice, index) => (
+                            <button key={choice} disabled={basicsDrill.choice !== null} className={basicsDrill.choice === index ? index === drill.answer ? "correct" : "wrong" : basicsDrill.choice !== null && index === drill.answer ? "correct" : ""} onClick={() => answerBasicsDrill(index)}><span>{String.fromCharCode(65 + index)}</span>{choice}</button>
+                          ))}
+                        </div>
+                        {basicsDrill.choice !== null && <div className={`drill-result ${basicsDrill.choice === drill.answer ? "correct" : ""}`}><span>{basicsDrill.choice === drill.answer ? <Check size={16} /> : <X size={16} />}</span><p><strong>{basicsDrill.choice === drill.answer ? "Correct." : "Keep this one in mind."}</strong> {drill.note}</p><button onClick={nextBasicsDrill}>{basicsDrill.answered >= BASICS_DRILLS.length ? "See results" : "Next question"} <ArrowRight size={15} /></button></div>}
+                      </> : <div className="drill-summary"><span><Trophy size={27} /></span><div><small>SPRINT COMPLETE</small><h3>{basicsDrill.score >= 8 ? "Foundation locked in." : basicsDrill.score >= 6 ? "A strong training run." : "Good first pass. Review and retry."}</h3><p>You scored <strong>{basicsDrill.score}/{BASICS_DRILLS.length}</strong> with a best streak of <strong>{basicsDrill.bestStreak}</strong>.</p></div><button onClick={restartBasicsDrill}><RotateCcw size={15} /> Run it again</button></div>}
                     </div>
                   </section>
                 </div>
@@ -1656,9 +1841,9 @@ function App() {
                         <div className="profile-form-footer"><span aria-live="polite">{profileMessage}</span><button type="submit">Save profile</button></div>
                       </form>
                     </section>
-                    <section className="profile-preferences">
-                      <div><span className="eyebrow dark">BOARD PREFERENCE</span><h2>Choose your board</h2><p>This color will be used across study, practice, and play.</p></div>
-                      <div className="profile-theme-picker">{["moss", "wood", "slate"].map((theme) => <button key={theme} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)}><span /><strong>{theme}</strong>{boardTheme === theme && <Check size={14} />}</button>)}</div>
+                    <section className="profile-preferences appearance-section">
+                      <div className="appearance-section-heading"><span><Eye size={19} /></span><div><span className="eyebrow dark">APPEARANCE</span><h2>Make the board yours</h2><p>Your choices apply to study, practice, play, and the focus board.</p></div></div>
+                      <AppearanceControls theme={boardTheme} setTheme={setBoardTheme} showCoordinates={showBoardCoordinates} setShowCoordinates={setShowBoardCoordinates} showLastMove={showLastMove} setShowLastMove={setShowLastMove} />
                     </section>
                     <section className={`membership-card ${currentUser.premium ? "premium" : ""}`}><span>{currentUser.premium ? <Sparkles size={22} /> : <ShieldCheck size={22} />}</span><div><span className="eyebrow">MEMBERSHIP</span><h2>{currentUser.premium ? "Your reading room is unlocked." : "Standard player access"}</h2><p>{currentUser.premium ? "You can read every published book and save titles to your reading list." : "An administrator can grant Premium access to the complete book library."}</p></div><button onClick={() => chooseView(currentUser.premium ? "books" : "articles")}>{currentUser.premium ? "Browse books" : "Read articles"}<ArrowRight size={15} /></button></section>
                   </div>
@@ -1685,7 +1870,7 @@ function App() {
                   </section>
                   <div className="settings-stack">
                     <section className="settings-card"><div className="settings-card-heading"><span><Users size={19} /></span><div><span className="eyebrow dark">ACCESS</span><h2>Account registration</h2></div></div><div className="settings-toggle-row"><div><strong>Allow new accounts</strong><span>Players can create a profile from the sign in page.</span></div><button role="switch" aria-label="Allow new accounts" aria-checked={siteSettings.registrationOpen !== false} className={`toggle-switch ${siteSettings.registrationOpen !== false ? "on" : ""}`} onClick={() => { setSiteSettings((current) => ({ ...current, registrationOpen: current.registrationOpen === false })); setAuthMode("signin"); }}><span /></button></div></section>
-                    <section className="settings-card"><div className="settings-card-heading"><span><FlipHorizontal size={19} /></span><div><span className="eyebrow dark">APPEARANCE</span><h2>Default board</h2><p>Choose the board color used for every player.</p></div></div><div className="settings-board-picker">{["moss", "wood", "slate"].map((theme) => <button key={theme} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} aria-label={`Use ${theme} board`}><span /><strong>{theme}</strong>{boardTheme === theme && <Check size={14} />}</button>)}</div></section>
+                    <section className="settings-card appearance-settings"><div className="settings-card-heading"><span><Eye size={19} /></span><div><span className="eyebrow dark">APPEARANCE</span><h2>Board experience</h2><p>Preview colors and choose which study guides stay visible in this browser.</p></div></div><AppearanceControls theme={boardTheme} setTheme={setBoardTheme} showCoordinates={showBoardCoordinates} setShowCoordinates={setShowBoardCoordinates} showLastMove={showLastMove} setShowLastMove={setShowLastMove} /></section>
                     <section className="settings-card backup-card"><div className="settings-card-heading"><span><Copy size={19} /></span><div><span className="eyebrow dark">NEW · CONTENT BACKUP</span><h2>Export studio content</h2><p>Download books, articles, announcements, and settings as a JSON snapshot.</p></div></div><div className="backup-summary"><span><strong>{books.length}</strong> books</span><span><strong>{articles.length}</strong> articles</span><span><strong>1</strong> settings file</span></div><button className="settings-primary" onClick={exportStudioContent}><Copy size={15} /> Download snapshot</button></section>
                   </div>
                 </div>}
@@ -2054,6 +2239,10 @@ function App() {
                 interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()}
                 theme={boardTheme}
                 showLegalMoves={mode !== "practice" || practiceStyle === "guided"}
+                showCoordinates={showBoardCoordinates}
+                showLastMove={showLastMove}
+                arrows={boardArrows}
+                onArrowsChange={setBoardArrows}
               />
             </div>
             <PlayerRail
@@ -2064,12 +2253,13 @@ function App() {
             />
             <div className="board-under">
               <span>
-                <MousePointer2 size={14} /> Click or drag pieces to move
+                <MousePointer2 size={14} /> Move pieces · right-drag to draw
               </span>
               <div className="board-tools">
                 <div className="theme-picker" aria-label="Board color">
-                  {["moss", "wood", "slate"].map((theme) => <button key={theme} aria-label={`${theme} board`} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} />)}
+                  {BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}
                 </div>
+              {boardArrows.length > 0 && <button aria-label="Clear board arrows" title="Clear arrows" onClick={() => setBoardArrows([])}><Trash2 size={15} /></button>}
               <button
                 aria-label="Flip board"
                 title="Flip board"
@@ -2409,10 +2599,10 @@ function App() {
           <div className="focus-board-stage">
             <div className="focus-board-header">
               <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
-              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{["moss", "wood", "slate"].map((theme) => <button key={theme} aria-label={`${theme} board`} className={`${theme} ${boardTheme === theme ? "active" : ""}`} onClick={() => setBoardTheme(theme)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
+              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div>{boardArrows.length > 0 && <button aria-label="Clear large board arrows" onClick={() => setBoardArrows([])}><Trash2 size={17} /></button>}<button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
             <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
-            <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} /></div>
+            <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} showCoordinates={showBoardCoordinates} showLastMove={showLastMove} arrows={boardArrows} onArrowsChange={setBoardArrows} /></div>
             <PlayerRail color={orientation} active={game.turn() === orientation} label={mode === "play" && playSide === orientation ? "You" : orientation === "w" ? "White" : "Black"} detail={mode === "practice" ? `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}` : "Playing now"} />
             <div className="focus-board-footer"><span>{game.isCheck() ? "Check · " : ""}{game.turn() === "w" ? "White" : "Black"} to move</span><span>{mode === "practice" && !practiceFree ? `${practicePly}/${opening.moves.length} moves` : `${displayedMoves.length} moves played`}</span></div>
           </div>
