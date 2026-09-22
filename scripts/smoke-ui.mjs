@@ -54,7 +54,19 @@ try {
   await page.mouse.move(arrowTo.x + arrowTo.width / 2, arrowTo.y + arrowTo.height / 2, { steps: 6 });
   await page.mouse.up({ button: "right" });
   assert.equal(await page.locator(".board-wrap .board-arrow").count(), 1);
+  await page.getByRole("button", { name: "Red arrows" }).click();
+  await page.getByRole("button", { name: "bold arrows" }).click();
+  const secondArrowFrom = await page.locator('.board-wrap [data-square="d2"]').boundingBox();
+  const secondArrowTo = await page.locator('.board-wrap [data-square="d4"]').boundingBox();
+  assert.ok(secondArrowFrom && secondArrowTo);
+  await page.mouse.move(secondArrowFrom.x + secondArrowFrom.width / 2, secondArrowFrom.y + secondArrowFrom.height / 2);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(secondArrowTo.x + secondArrowTo.width / 2, secondArrowTo.y + secondArrowTo.height / 2, { steps: 6 });
+  await page.mouse.up({ button: "right" });
+  assert.equal(await page.locator(".board-wrap .board-arrow").count(), 2);
   await page.screenshot({ path: resolve(output, "board-arrow.png"), fullPage: true });
+  await page.getByRole("button", { name: "Undo board arrow" }).click();
+  assert.equal(await page.locator(".board-wrap .board-arrow").count(), 1);
   await page.getByRole("button", { name: "Enlarge board" }).click();
   const annotatedFocusBoard = page.getByRole("dialog", { name: "Large chess board" });
   await annotatedFocusBoard.waitFor();
@@ -202,6 +214,11 @@ try {
   await page.getByRole("tab", { name: /Color call/ }).click();
   await page.getByRole("button", { name: "Light square" }).click();
   assert.match(await page.locator(".coordinate-trainer .vision-stats").innerText(), /Best streak\s+2/is);
+  assert.equal(await page.locator(".vision-lesson-grid button").count(), 24);
+  await page.getByRole("button", { name: /Anchor a1/ }).click();
+  await page.getByRole("button", { name: "Square a1" }).click();
+  assert.match(await page.locator(".vision-course-heading").innerText(), /1\/24/);
+  await page.getByText(/Lesson complete — a1/).waitFor();
   await page.getByRole("button", { name: /Meet the pieces/ }).click();
   assert.equal(await page.locator(".piece-guide-card").count(), 6);
   await page.locator(".checkpoint-options button").nth(1).click();
@@ -314,6 +331,11 @@ try {
   await page.getByRole("button", { name: "Save opening" }).last().click();
   await page.getByRole("button", { name: "My repertoire" }).click();
   assert.ok((await page.locator(".opening-row").count()) > 0);
+  assert.equal(await page.locator(".study-panel").count(), 0);
+  assert.match(await page.locator(".repertoire-board-prompt").innerText(), /Choose a line/);
+  await page.screenshot({ path: resolve(output, "repertoire.png"), fullPage: true });
+  await page.locator(".opening-row-main").first().click();
+  assert.equal(await page.locator(".study-panel").count(), 1);
 
   await page.getByRole("button", { name: "Opening library" }).click();
   await page
@@ -331,7 +353,9 @@ try {
   await page.locator('.board-wrap [aria-label="h3"]').click();
   await page.getByText("Line complete! Nicely played.").waitFor();
   await page.getByRole("button", { name: "My repertoire" }).click();
+  assert.equal(await page.locator(".study-panel").count(), 0);
   await page.getByRole("button", { name: /Mastered/ }).click();
+  assert.equal(await page.locator(".study-panel").count(), 0);
   assert.match(
     await page.locator(".opening-row-main").first().innerText(),
     /Amar Opening/,

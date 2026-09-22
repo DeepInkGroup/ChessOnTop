@@ -38,6 +38,7 @@ import {
   Timer,
   Trash2,
   Trophy,
+  Undo2,
   User,
   UserPlus,
   Users,
@@ -369,6 +370,38 @@ const BOARD_THEMES = [
   { id: "sand", label: "Sand", detail: "Bright natural stone" },
 ];
 const VISION_SQUARES = ["e4", "c6", "f2", "b7", "g5", "a3", "h6", "d8", "e1", "b4", "f7", "c2"];
+const ARROW_COLORS = [
+  { id: "gold", label: "Gold", hex: "#e1ae3d" },
+  { id: "green", label: "Green", hex: "#4f9b65" },
+  { id: "red", label: "Red", hex: "#d55c53" },
+  { id: "blue", label: "Blue", hex: "#4388bd" },
+];
+const BOARD_VISION_LESSONS = [
+  { id: "corner-a1", title: "Anchor a1", target: "a1", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Begin with the dark corner beneath White’s queenside rook." },
+  { id: "corner-h8", title: "Opposite corner", target: "h8", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Travel diagonally across the whole board to h8." },
+  { id: "center-e4", title: "King’s center", target: "e4", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Locate one of White’s most important central squares." },
+  { id: "center-d5", title: "Queen’s center", target: "d5", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Find the central partner of e4." },
+  { id: "knight-c6", title: "Knight post", target: "c6", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Find the natural development square for Black’s queen knight." },
+  { id: "king-f2", title: "Early target", target: "f2", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Locate the pawn square protected only by White’s king at the start." },
+  { id: "edge-h4", title: "Kingside edge", target: "h4", mode: "find", side: "w", coordinates: true, level: "Starter", prompt: "Move to the outer h-file and fourth rank." },
+  { id: "edge-a6", title: "Queenside edge", target: "a6", mode: "find", side: "w", coordinates: false, level: "Improver", prompt: "Hide the labels and find a6 from its board geometry." },
+  { id: "flip-b7", title: "Flip to b7", target: "b7", mode: "find", side: "b", coordinates: true, level: "Improver", prompt: "Read files and ranks with Black at the bottom." },
+  { id: "flip-g2", title: "Flip to g2", target: "g2", mode: "find", side: "b", coordinates: true, level: "Improver", prompt: "Stay oriented on the kingside from Black’s view." },
+  { id: "blind-f7", title: "Hidden f7", target: "f7", mode: "find", side: "w", coordinates: false, level: "Improver", prompt: "Find Black’s early weak point without coordinates." },
+  { id: "blind-c2", title: "Hidden c2", target: "c2", mode: "find", side: "w", coordinates: false, level: "Improver", prompt: "Use the board edges to locate c2 without labels." },
+  { id: "blind-h6", title: "Flipped h6", target: "h6", mode: "find", side: "b", coordinates: false, level: "Improver", prompt: "Combine a flipped board with hidden coordinates." },
+  { id: "blind-d8", title: "Flipped d8", target: "d8", mode: "find", side: "b", coordinates: false, level: "Improver", prompt: "Find Black’s queen square from Black’s side." },
+  { id: "color-a1", title: "Color anchor", target: "a1", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Remember the first rule: a1 is dark." },
+  { id: "color-h1", title: "Across rank one", target: "h1", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Alternate seven times from the a1 anchor." },
+  { id: "color-e4", title: "Center color I", target: "e4", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Picture e4 and name its color before answering." },
+  { id: "color-d4", title: "Center color II", target: "d4", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Compare d4 with its neighbor e4." },
+  { id: "color-c6", title: "Knight-square color", target: "c6", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Visualize the c-file crossing the sixth rank." },
+  { id: "color-f7", title: "Target-square color", target: "f7", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Name the color of the classic opening target f7." },
+  { id: "color-b2", title: "Fianchetto color", target: "b2", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Picture the long diagonal beginning near White’s queen rook." },
+  { id: "color-g5", title: "Attack-square color", target: "g5", mode: "color", side: "w", coordinates: false, level: "Color", prompt: "Visualize a kingside attacking square." },
+  { id: "master-e1", title: "Home square", target: "e1", mode: "find", side: "b", coordinates: false, level: "Mastery", prompt: "On a flipped board, locate White’s king home square." },
+  { id: "master-b4", title: "Blind b4", target: "b4", mode: "find", side: "b", coordinates: false, level: "Mastery", prompt: "Finish with a flipped, label-free queenside search." },
+];
 
 function readLocal(key, fallback) {
   try {
@@ -433,6 +466,8 @@ function Board({
   showLastMove = true,
   arrows = [],
   onArrowsChange,
+  arrowColor = "gold",
+  arrowWeight = "regular",
   compact = false,
 }) {
   const markerId = useId().replace(/:/g, "");
@@ -477,7 +512,7 @@ function Board({
         if (compact || event.button !== 2 || !onArrowsChange) return;
         event.preventDefault();
         const from = squareFromPointer(event);
-        setArrowDraft({ from, to: from });
+        setArrowDraft({ from, to: from, color: arrowColor, weight: arrowWeight });
         event.currentTarget.setPointerCapture?.(event.pointerId);
       }}
       onPointerMove={(event) => {
@@ -492,9 +527,13 @@ function Board({
         if (arrowDraft.from === to) {
           onArrowsChange([]);
         } else {
-          onArrowsChange((current) => current.some((arrow) => arrow.from === arrowDraft.from && arrow.to === to)
-            ? current.filter((arrow) => arrow.from !== arrowDraft.from || arrow.to !== to)
-            : [...current, { from: arrowDraft.from, to }]);
+          onArrowsChange((current) => {
+            const existing = current.find((arrow) => arrow.from === arrowDraft.from && arrow.to === to);
+            if (existing?.color === arrowColor && existing?.weight === arrowWeight) {
+              return current.filter((arrow) => arrow.from !== arrowDraft.from || arrow.to !== to);
+            }
+            return [...current.filter((arrow) => arrow.from !== arrowDraft.from || arrow.to !== to), { from: arrowDraft.from, to, color: arrowColor, weight: arrowWeight }];
+          });
         }
         setArrowDraft(null);
         event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -553,14 +592,18 @@ function Board({
       {!compact && visibleArrows.length > 0 && (
         <svg className="board-arrows" viewBox="0 0 100 100" aria-label={`${arrows.length} board ${arrows.length === 1 ? "arrow" : "arrows"}`}>
           <defs>
-            <marker id={`${markerId}-head`} markerWidth="4" markerHeight="4" refX="3.3" refY="2" orient="auto" markerUnits="strokeWidth">
-              <path d="M0,0 L4,2 L0,4 Z" />
-            </marker>
+            {ARROW_COLORS.map((item) => <marker key={item.id} id={`${markerId}-${item.id}-head`} markerWidth="5" markerHeight="5" refX="4.25" refY="2.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0.3 L5,2.5 L0,4.7 Z" fill={item.hex} /></marker>)}
           </defs>
           {visibleArrows.map((arrow, index) => {
             const from = squareCenter(arrow.from);
             const to = squareCenter(arrow.to);
-            return <line key={`${arrow.from}-${arrow.to}-${index}`} className={`board-arrow ${arrow.draft ? "draft" : ""}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} markerEnd={`url(#${markerId}-head)`} />;
+            const color = ARROW_COLORS.find((item) => item.id === arrow.color) || ARROW_COLORS[0];
+            const width = arrow.weight === "bold" ? 3.15 : 2.25;
+            return <g key={`${arrow.from}-${arrow.to}-${index}`} className={arrow.draft ? "draft" : ""}>
+              <line className="board-arrow-shadow" x1={from.x} y1={from.y} x2={to.x} y2={to.y} style={{ strokeWidth: width + 1.9 }} />
+              <circle className="board-arrow-origin" cx={from.x} cy={from.y} r={width * .78} style={{ fill: color.hex }} />
+              <line className="board-arrow" x1={from.x} y1={from.y} x2={to.x} y2={to.y} style={{ stroke: color.hex, strokeWidth: width }} markerEnd={`url(#${markerId}-${color.id}-head)`} />
+            </g>;
           })}
         </svg>
       )}
@@ -611,6 +654,25 @@ function AppearanceControls({ theme, setTheme, showCoordinates, setShowCoordinat
   );
 }
 
+function ArrowControls({ color, setColor, weight, setWeight, arrows, setArrows, compact = false }) {
+  return (
+    <div className={`arrow-controls ${compact ? "compact" : ""}`} aria-label="Board arrow controls">
+      <div className="arrow-control-copy"><span>BOARD MARKUP</span><small>Right-drag any square to draw</small></div>
+      <div className="arrow-palette" aria-label="Arrow color">
+        {ARROW_COLORS.map((item) => <button key={item.id} aria-label={`${item.label} arrows`} title={`${item.label} arrows`} className={`${item.id} ${color === item.id ? "active" : ""}`} onClick={() => setColor(item.id)}><span style={{ background: item.hex }} /></button>)}
+      </div>
+      <div className="arrow-weight" aria-label="Arrow thickness">
+        {["regular", "bold"].map((item) => <button key={item} className={weight === item ? "active" : ""} aria-label={`${item} arrows`} onClick={() => setWeight(item)}><span className={item} /></button>)}
+      </div>
+      <div className="arrow-actions">
+        <button aria-label="Undo board arrow" title="Undo arrow" disabled={!arrows.length} onClick={() => setArrows((current) => current.slice(0, -1))}><Undo2 size={15} /></button>
+        <button aria-label="Clear board arrows" title="Clear arrows" disabled={!arrows.length} onClick={() => setArrows([])}><Trash2 size={15} /></button>
+      </div>
+      {arrows.length > 0 && <span className="arrow-count">{arrows.length}</span>}
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState("overview");
   const [search, setSearch] = useState("");
@@ -628,6 +690,7 @@ function App() {
   const [visionOrientation, setVisionOrientation] = useState("w");
   const [visionCoordinates, setVisionCoordinates] = useState(true);
   const [visionHistory, setVisionHistory] = useState([]);
+  const [activeVisionLesson, setActiveVisionLesson] = useState(null);
   const [basicsDrill, setBasicsDrill] = useState({ index: 0, choice: null, score: 0, streak: 0, bestStreak: 0, answered: 0, started: false, secondsLeft: 180, complete: false });
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
   const [mode, setMode] = useState("learn");
@@ -650,6 +713,9 @@ function App() {
   const [showBoardCoordinates, setShowBoardCoordinates] = useStoredValue("cot-board-coordinates", true);
   const [showLastMove, setShowLastMove] = useStoredValue("cot-board-last-move", true);
   const [boardArrows, setBoardArrows] = useState([]);
+  const [arrowColor, setArrowColor] = useState("gold");
+  const [arrowWeight, setArrowWeight] = useState("regular");
+  const [collectionOpeningChosen, setCollectionOpeningChosen] = useState(false);
   const [boardFocus, setBoardFocus] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -659,6 +725,7 @@ function App() {
   const [completed, setCompleted] = useStoredList("openfile-completed");
   const [readingList, setReadingList] = useStoredList("openfile-reading-list");
   const [basicCompleted, setBasicCompleted] = useStoredList("openfile-basics-completed");
+  const [visionCompleted, setVisionCompleted] = useStoredList("cot-vision-completed");
   const [users, setUsers] = useStoredValue("openfile-users", []);
   const [books, setBooks] = useStoredValue("openfile-books-v2", DEFAULT_BOOKS);
   const [articles, setArticles] = useStoredValue("cot-articles", []);
@@ -861,6 +928,7 @@ function App() {
   }, [boardFocus]);
 
   function resetForOpening(item) {
+    if (view === "collection") setCollectionOpeningChosen(true);
     setSelectedId(item.id);
     setPly(Math.min(6, item.moves.length));
     setFreeMoves([]);
@@ -874,6 +942,7 @@ function App() {
     setSelectedSquare(null);
     setPendingPromotion(null);
     setPlaying(false);
+    setBoardArrows([]);
     if (view !== "practice") setMode("learn");
     if (window.innerWidth < 1100)
       setTimeout(
@@ -893,6 +962,7 @@ function App() {
     if (next === "collection") {
       setEcoFilter("All");
       setSearch("");
+      setCollectionOpeningChosen(false);
     }
     if (next === "practice") {
       setMode("practice");
@@ -1175,6 +1245,20 @@ function App() {
     setNewArticle({ title: "", author: "", category: "Strategy", summary: "", content: "" });
   }
 
+  function startVisionLesson(lesson) {
+    setActiveVisionLesson(lesson.id);
+    setVisionMode(lesson.mode);
+    setVisionOrientation(lesson.side);
+    setVisionCoordinates(lesson.coordinates);
+    setCoordinateTarget(lesson.target);
+    setCoordinateFeedback(lesson.prompt);
+  }
+
+  function completeVisionLesson(id) {
+    if (!id) return;
+    setVisionCompleted((current) => current.includes(id) ? current : [...current, id]);
+  }
+
   function chooseCoordinate(square) {
     const correct = square === coordinateTarget;
     setCoordinateScore((current) => ({
@@ -1186,6 +1270,11 @@ function App() {
     setVisionHistory((current) => [{ square, correct }, ...current].slice(0, 6));
     if (!correct) {
       setCoordinateFeedback(`${square} is not it. Keep looking for ${coordinateTarget}.`);
+      return;
+    }
+    if (activeVisionLesson) {
+      completeVisionLesson(activeVisionLesson);
+      setCoordinateFeedback(`Lesson complete — ${coordinateTarget} is locked in. Choose another vision lesson below.`);
       return;
     }
     const next = VISION_SQUARES[(VISION_SQUARES.indexOf(coordinateTarget) + 1) % VISION_SQUARES.length];
@@ -1205,6 +1294,15 @@ function App() {
       best: correct ? Math.max(current.best, current.streak + 1) : current.best,
     }));
     setVisionHistory((current) => [{ square: previous, correct }, ...current].slice(0, 6));
+    if (activeVisionLesson) {
+      if (correct) {
+        completeVisionLesson(activeVisionLesson);
+        setCoordinateFeedback(`Lesson complete — ${previous} is ${isLight ? "light" : "dark"}. Choose the next lesson below.`);
+      } else {
+        setCoordinateFeedback(`${previous} is ${isLight ? "light" : "dark"}. Picture the board and try this lesson again.`);
+      }
+      return;
+    }
     setCoordinateFeedback(`${previous} is a ${isLight ? "light" : "dark"} square${correct ? " — correct." : "."} Next: ${next}.`);
     setCoordinateTarget(next);
   }
@@ -1214,6 +1312,7 @@ function App() {
     setCoordinateScore({ correct: 0, tries: 0, streak: 0, best: 0 });
     setCoordinateFeedback(visionMode === "find" ? "Find the square before you click." : "Name the square color without using the board.");
     setVisionHistory([]);
+    setActiveVisionLesson(null);
   }
 
   function answerBasicsDrill(index) {
@@ -1244,7 +1343,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) ? "wide-mode" : ""}`}>
+    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div
           className="brand"
@@ -1617,8 +1716,8 @@ function App() {
                       <button className="vision-reset" onClick={resetBoardVision}><RotateCcw size={14} /> Reset</button>
                     </div>
                     <div className="vision-mode-tabs" role="tablist" aria-label="Board vision mode">
-                      <button role="tab" aria-selected={visionMode === "find"} className={visionMode === "find" ? "active" : ""} onClick={() => { setVisionMode("find"); setCoordinateFeedback("Find the square before you click."); }}>Square hunt<span>Locate a coordinate</span></button>
-                      <button role="tab" aria-selected={visionMode === "color"} className={visionMode === "color" ? "active" : ""} onClick={() => { setVisionMode("color"); setCoordinateFeedback("Name the square color without using the board."); }}>Color call<span>See the board mentally</span></button>
+                      <button role="tab" aria-selected={visionMode === "find"} className={visionMode === "find" ? "active" : ""} onClick={() => { setVisionMode("find"); setActiveVisionLesson(null); setCoordinateFeedback("Find the square before you click."); }}>Square hunt<span>Locate a coordinate</span></button>
+                      <button role="tab" aria-selected={visionMode === "color"} className={visionMode === "color" ? "active" : ""} onClick={() => { setVisionMode("color"); setActiveVisionLesson(null); setCoordinateFeedback("Name the square color without using the board."); }}>Color call<span>See the board mentally</span></button>
                     </div>
                     <div className="vision-stats">
                       <div><span>Accuracy</span><strong>{coordinateScore.tries ? Math.round((coordinateScore.correct / coordinateScore.tries) * 100) : 0}%</strong></div>
@@ -1650,6 +1749,18 @@ function App() {
                     </div>
                     <p className="coordinate-feedback" aria-live="polite">{coordinateFeedback}</p>
                     <div className="vision-history"><span>RECENT</span>{visionHistory.length ? visionHistory.map((item, index) => <i key={`${item.square}-${index}`} className={item.correct ? "correct" : "wrong"}>{item.square}{item.correct ? <Check size={10} /> : <X size={10} />}</i>) : <small>Your attempts will appear here.</small>}</div>
+                    <div className="vision-course">
+                      <div className="vision-course-heading"><div><span className="eyebrow dark">24 GUIDED LESSONS</span><h3>Build your board map</h3></div><strong>{visionCompleted.length}/{BOARD_VISION_LESSONS.length}</strong></div>
+                      <div className="vision-course-progress"><span style={{ width: `${(visionCompleted.length / BOARD_VISION_LESSONS.length) * 100}%` }} /></div>
+                      <div className="vision-lesson-grid">
+                        {BOARD_VISION_LESSONS.map((item, index) => {
+                          const complete = visionCompleted.includes(item.id);
+                          return <button key={item.id} className={`${activeVisionLesson === item.id ? "active" : ""} ${complete ? "complete" : ""}`} onClick={() => startVisionLesson(item)}>
+                            <span>{String(index + 1).padStart(2, "0")}</span><div><small>{item.level} · {item.mode === "color" ? "COLOR" : item.side === "b" ? "FLIPPED" : "LOCATE"}</small><strong>{item.title}</strong></div><em>{complete ? <Check size={13} /> : item.target}</em>
+                          </button>;
+                        })}
+                      </div>
+                    </div>
                   </section>
                   <section className="thinking-routine">
                     <div className="basics-tool-heading">
@@ -1955,22 +2066,22 @@ function App() {
                   </div></>
                 )}
                 {view === "collection" && (
-                  <div className="collection-tabs">
+                  <><div className="collection-tabs">
                     <button
                       className={collectionTab === "saved" ? "active" : ""}
-                      onClick={() => setCollectionTab("saved")}
+                      onClick={() => { setCollectionTab("saved"); setCollectionOpeningChosen(false); setBoardFocus(false); }}
                     >
                       <Bookmark size={16} /> Saved{" "}
                       <span>{favorites.length}</span>
                     </button>
                     <button
                       className={collectionTab === "mastered" ? "active" : ""}
-                      onClick={() => setCollectionTab("mastered")}
+                      onClick={() => { setCollectionTab("mastered"); setCollectionOpeningChosen(false); setBoardFocus(false); }}
                     >
                       <Check size={16} /> Mastered{" "}
                       <span>{completed.length}</span>
                     </button>
-                  </div>
+                  </div>{filteredOpenings.length > 0 && !collectionOpeningChosen && <div className="repertoire-board-prompt"><span><Target size={18} /></span><div><strong>Choose a line when you are ready to study.</strong><p>The board will open after you select an opening from your repertoire.</p></div><ArrowRight size={18} /></div>}</>
                 )}
                 {view !== "collection" && (
                   <div className="filter-panel">
@@ -2126,7 +2237,7 @@ function App() {
             </div>
           </main>
 
-          {!(["overview", "basics", "books", "articles", "account", "admin"].includes(view)) && <aside className="study-panel" id="study-panel">
+          {!(["overview", "basics", "books", "articles", "account", "admin"].includes(view)) && !(view === "collection" && !collectionOpeningChosen) && <aside className="study-panel" id="study-panel">
             <div className="study-top">
               <div>
                 <span className="eyebrow dark">YOUR STUDY SPACE</span>
@@ -2243,6 +2354,8 @@ function App() {
                 showLastMove={showLastMove}
                 arrows={boardArrows}
                 onArrowsChange={setBoardArrows}
+                arrowColor={arrowColor}
+                arrowWeight={arrowWeight}
               />
             </div>
             <PlayerRail
@@ -2259,7 +2372,6 @@ function App() {
                 <div className="theme-picker" aria-label="Board color">
                   {BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}
                 </div>
-              {boardArrows.length > 0 && <button aria-label="Clear board arrows" title="Clear arrows" onClick={() => setBoardArrows([])}><Trash2 size={15} /></button>}
               <button
                 aria-label="Flip board"
                 title="Flip board"
@@ -2271,6 +2383,7 @@ function App() {
               </button>
               </div>
             </div>
+            <ArrowControls color={arrowColor} setColor={setArrowColor} weight={arrowWeight} setWeight={setArrowWeight} arrows={boardArrows} setArrows={setBoardArrows} />
 
             {mode === "play" && (
               <div className={`game-status ${playResult ? "finished" : ""}`} role="status" aria-live="polite">
@@ -2594,15 +2707,16 @@ function App() {
           </article>
         </div>
       )}
-      {boardFocus && !(["overview", "books", "articles", "account", "admin"].includes(view)) && (
+      {boardFocus && !(["overview", "books", "articles", "account", "admin"].includes(view)) && !(view === "collection" && !collectionOpeningChosen) && (
         <div className="focus-board-overlay" role="dialog" aria-modal="true" aria-label="Large chess board">
           <div className="focus-board-stage">
             <div className="focus-board-header">
               <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
-              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div>{boardArrows.length > 0 && <button aria-label="Clear large board arrows" onClick={() => setBoardArrows([])}><Trash2 size={17} /></button>}<button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
+              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
             <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
-            <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} showCoordinates={showBoardCoordinates} showLastMove={showLastMove} arrows={boardArrows} onArrowsChange={setBoardArrows} /></div>
+            <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} showCoordinates={showBoardCoordinates} showLastMove={showLastMove} arrows={boardArrows} onArrowsChange={setBoardArrows} arrowColor={arrowColor} arrowWeight={arrowWeight} /></div>
+            <ArrowControls compact color={arrowColor} setColor={setArrowColor} weight={arrowWeight} setWeight={setArrowWeight} arrows={boardArrows} setArrows={setBoardArrows} />
             <PlayerRail color={orientation} active={game.turn() === orientation} label={mode === "play" && playSide === orientation ? "You" : orientation === "w" ? "White" : "Black"} detail={mode === "practice" ? `${practiceMistakes} ${practiceMistakes === 1 ? "miss" : "misses"}` : "Playing now"} />
             <div className="focus-board-footer"><span>{game.isCheck() ? "Check · " : ""}{game.turn() === "w" ? "White" : "Black"} to move</span><span>{mode === "practice" && !practiceFree ? `${practicePly}/${opening.moves.length} moves` : `${displayedMoves.length} moves played`}</span></div>
           </div>
