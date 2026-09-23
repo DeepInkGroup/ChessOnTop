@@ -510,8 +510,14 @@ function makeGame(moves) {
 
 const escapeHtml = (value = "") => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const richTextPlain = (value = "") => value.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
-const EDITOR_FONTS = ["DM Serif Display", "Georgia", "Palatino Linotype", "Garamond", "Times New Roman", "Arial", "Verdana", "Trebuchet MS", "Tahoma", "Courier New"];
+const EDITOR_FONTS = ["DM Serif Display", "Georgia", "Palatino Linotype", "Garamond", "Times New Roman", "Baskerville", "Book Antiqua", "Arial", "Verdana", "Trebuchet MS", "Tahoma", "Calibri", "Helvetica", "Courier New", "Lucida Console"];
 const EDITOR_IMAGE_PLACEMENTS = ["wide", "center", "left", "right"];
+const toDateTimeLocal = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+const toReleaseIso = (value) => value ? new Date(value).toISOString() : "";
 
 function sanitizeRichText(value = "") {
   if (!value.trim()) return "";
@@ -830,6 +836,11 @@ function RichTextEditor({ label, value, onChange, placeholder }) {
     document.execCommand(command, false, commandValue);
     syncContent();
   };
+  const insertStudyNote = () => {
+    restoreSelection();
+    document.execCommand("insertHTML", false, '<blockquote><strong>Key idea</strong><br>Write the chess idea readers should remember.</blockquote><p><br></p>');
+    syncContent();
+  };
   const insertImages = async (files) => {
     const selectedFiles = [...files];
     if (!selectedFiles.length) return;
@@ -894,6 +905,7 @@ function RichTextEditor({ label, value, onChange, placeholder }) {
         <span />
         <button type="button" aria-label={`${label} bullet list`} title="Bullet list" onMouseDown={(event) => { event.preventDefault(); applyFormat("insertUnorderedList"); }}>• List</button>
         <button type="button" aria-label={`${label} numbered list`} title="Numbered list" onMouseDown={(event) => { event.preventDefault(); applyFormat("insertOrderedList"); }}>1. List</button>
+        <button type="button" aria-label={`${label} insert key idea`} title="Insert a highlighted key idea" onMouseDown={(event) => { event.preventDefault(); insertStudyNote(); }}><Sparkles size={13} /> Key idea</button>
         <button type="button" aria-label={`${label} clear formatting`} title="Clear formatting" onMouseDown={(event) => { event.preventDefault(); applyFormat("removeFormat"); }}>Clear</button>
         <span />
         <label className="editor-image-button" htmlFor={inlineInputId} onMouseDown={rememberSelection}><ImagePlus size={14} /> {imageBusy ? "Adding…" : "Add images"}</label>
@@ -1002,16 +1014,23 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [adminTab, setAdminTab] = useState("overview");
-  const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
-  const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+  const [newBook, setNewBook] = useState({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "", releaseAt: "" });
+  const [newArticle, setNewArticle] = useState({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "", releaseAt: "" });
   const [editingBookId, setEditingBookId] = useState(null);
   const [editingArticleId, setEditingArticleId] = useState(null);
   const [selectedBook, setSelectedBook] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [profileForm, setProfileForm] = useState({ fullName: "", country: "", fideRating: "", chessTitle: "None", playingLevel: "Beginner", favoriteOpening: "", bio: "" });
   const [profileMessage, setProfileMessage] = useState("");
-  const visibleBooks = books.filter((book) => book.visible !== false);
-  const visibleArticles = articles.filter((article) => article.visible !== false);
+  const [clockNow, setClockNow] = useState(Date.now());
+  const hasReleased = (item) => !item.releaseAt || !Number.isFinite(new Date(item.releaseAt).getTime()) || new Date(item.releaseAt).getTime() <= clockNow;
+  const visibleBooks = books.filter((book) => book.visible !== false && hasReleased(book));
+  const visibleArticles = articles.filter((article) => article.visible !== false && hasReleased(article));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (currentUser) sessionStorage.setItem("openfile-session", JSON.stringify(currentUser));
@@ -1501,7 +1520,7 @@ function App() {
     } else {
       setBooks((current) => [...current, { ...newBook, content: sanitizeRichText(newBook.content), id: crypto.randomUUID(), mark: String(current.length + 1).padStart(2, "0"), color: palette[current.length % palette.length], visible: true, locked: false }]);
     }
-    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
+    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "", releaseAt: "" });
   }
 
   function practicePgn() {
@@ -1544,34 +1563,34 @@ function App() {
         content: sanitizeRichText(newArticle.content),
         id: crypto.randomUUID(),
         author: newArticle.author.trim() || "CO.T Editorial",
-        published: new Date().toISOString(),
+        published: newArticle.releaseAt || new Date().toISOString(),
         visible: true,
         locked: false,
       }, ...current]);
     }
-    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "", releaseAt: "" });
   }
 
   function editBook(book) {
     setEditingArticleId(null);
     setEditingBookId(book.id);
-    setNewBook({ title: book.title, author: book.author, focus: book.focus || "", level: book.level || "Intermediate", image: book.image || "", content: book.content || "" });
+    setNewBook({ title: book.title, author: book.author, focus: book.focus || "", level: book.level || "Intermediate", image: book.image || "", content: book.content || "", releaseAt: book.releaseAt || "" });
   }
 
   function editArticle(article) {
     setEditingBookId(null);
     setEditingArticleId(article.id);
-    setNewArticle({ title: article.title, author: article.author || "", category: article.category || "Strategy", summary: article.summary || "", image: article.image || "", content: article.content || "" });
+    setNewArticle({ title: article.title, author: article.author || "", category: article.category || "Strategy", summary: article.summary || "", image: article.image || "", content: article.content || "", releaseAt: article.releaseAt || "" });
   }
 
   function cancelBookEdit() {
     setEditingBookId(null);
-    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "" });
+    setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "", releaseAt: "" });
   }
 
   function cancelArticleEdit() {
     setEditingArticleId(null);
-    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "" });
+    setNewArticle({ title: "", author: "", category: "Strategy", summary: "", image: "", content: "", releaseAt: "" });
   }
 
   function openBook(book) {
@@ -2103,7 +2122,7 @@ function App() {
                       </div>
                     </div>
                   </section>
-                  {currentUser ? <section className="thinking-routine">
+                  {currentUser && <section className="thinking-routine">
                     <div className="basics-tool-heading">
                       <div>
                         <span className="eyebrow dark">BEFORE EVERY MOVE</span>
@@ -2120,12 +2139,8 @@ function App() {
                         </div>
                       ))}
                     </div>
-                  </section> : <section className="thinking-routine thinking-routine-locked">
-                    <div className="basics-tool-heading"><div><span className="eyebrow dark">BEFORE EVERY MOVE</span><h2>Your thinking routine</h2></div><Lock size={20} /></div>
-                    <p className="thinking-intro">Create a free account to unlock the four-step scan and keep it beside your practice board.</p>
-                    <button className="primary-button" onClick={() => chooseView("account")}><UserPlus size={15} /> Create your account <ArrowRight size={15} /></button>
                   </section>}
-                  {currentUser ? <section className="basics-drill">
+                  {currentUser && <section className="basics-drill">
                     <div className="drill-visual"><span>{String(Math.floor(basicsDrill.secondsLeft / 60)).padStart(2, "0")}:{String(basicsDrill.secondsLeft % 60).padStart(2, "0")}</span><Timer size={25} /><small>{basicsDrill.started ? "TIME REMAINING" : "STARTS WITH YOUR FIRST ANSWER"}</small><div><strong>{basicsDrill.streak}</strong><small>CURRENT STREAK</small></div></div>
                     <div className="drill-content">
                       <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>{BASICS_DRILLS.length} questions. Three minutes.</h2><p className="drill-intro">A quick mix of opening habits, tactics, king safety, and endgames. Learn from each answer as you go.</p></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
@@ -2141,9 +2156,6 @@ function App() {
                         {basicsDrill.choice !== null && <div className={`drill-result ${basicsDrill.choice === drill.answer ? "correct" : ""}`}><span>{basicsDrill.choice === drill.answer ? <Check size={16} /> : <X size={16} />}</span><p><strong>{basicsDrill.choice === drill.answer ? "Correct." : "Keep this one in mind."}</strong> {drill.note}</p><button onClick={nextBasicsDrill}>{basicsDrill.answered >= BASICS_DRILLS.length ? "See results" : "Next question"} <ArrowRight size={15} /></button></div>}
                       </> : <div className="drill-summary"><span><Trophy size={27} /></span><div><small>SPRINT COMPLETE</small><h3>{basicsDrill.score >= Math.ceil(BASICS_DRILLS.length * .8) ? "Foundation locked in." : basicsDrill.score >= Math.ceil(BASICS_DRILLS.length * .6) ? "A strong training run." : "Good first pass. Review and retry."}</h3><p>You scored <strong>{basicsDrill.score}/{BASICS_DRILLS.length}</strong> with a best streak of <strong>{basicsDrill.bestStreak}</strong>.</p></div><button onClick={restartBasicsDrill}><RotateCcw size={15} /> Run it again</button></div>}
                     </div>
-                  </section> : <section className="basics-drill sprint-locked">
-                    <div className="drill-visual"><Lock size={27} /><small>MEMBER PRACTICE</small></div>
-                    <div className="drill-content"><div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>A three minute chess warm-up.</h2><p className="drill-intro">Build fast recall across opening principles, tactics, king safety, and endgames. Your progress stays available for the session.</p></div><Lock size={19} /></div><div className="sprint-locked-bottom"><div><strong>{BASICS_DRILLS.length} quick questions</strong><span>Learn as you go · Run it again anytime</span></div><button className="primary-button" onClick={() => chooseView("account")}><UserPlus size={15} /> Create your account <ArrowRight size={15} /></button></div></div>
                   </section>}
                 </div>
               </>
@@ -2336,12 +2348,13 @@ function App() {
                     <label>Author<input required value={newBook.author} onChange={(event) => setNewBook((current) => ({ ...current, author: event.target.value }))} placeholder="Author" /></label>
                     <label>Summary<input value={newBook.focus} onChange={(event) => setNewBook((current) => ({ ...current, focus: event.target.value }))} placeholder="What it teaches" /></label>
                     <label>Level<select value={newBook.level} onChange={(event) => setNewBook((current) => ({ ...current, level: event.target.value }))}><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>All levels</option></select></label>
+                    <label className="release-schedule">Release date and time<input type="datetime-local" value={toDateTimeLocal(newBook.releaseAt)} onChange={(event) => setNewBook((current) => ({ ...current, releaseAt: toReleaseIso(event.target.value) }))} /><small>Use your local time. Leave blank to publish as soon as you save.</small></label>
                     <ImageUpload label="Book cover image" value={newBook.image} onChange={(image) => setNewBook((current) => ({ ...current, image }))} />
                     <RichTextEditor label="Book content" value={newBook.content} onChange={(content) => setNewBook((current) => ({ ...current, content }))} placeholder={"Write the book here. Use blank lines between chapters or sections.\n\nChapter 1 — The first idea..."} />
                     <small className="editor-count">{richTextPlain(newBook.content).length.toLocaleString()} characters</small>
-                    <div className="publish-actions"><button className="primary-button" type="submit">{editingBookId ? "Save book" : "Publish book"} <ArrowRight size={16} /></button>{editingBookId && <button type="button" className="cancel-edit" onClick={cancelBookEdit}>Cancel</button>}</div>
+                    <div className="publish-actions"><button className="primary-button" type="submit">{newBook.releaseAt && new Date(newBook.releaseAt).getTime() > clockNow ? "Schedule book" : editingBookId ? "Save book" : "Publish book"} <ArrowRight size={16} /></button>{editingBookId && <button type="button" className="cancel-edit" onClick={cancelBookEdit}>Cancel</button>}</div>
                   </form>
-                  <div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color} ${book.image ? "has-image" : ""}`} style={book.image ? { backgroundImage: `url(${book.image})` } : undefined}>{!book.image && book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{book.locked ? " · Locked" : richTextPlain(book.content) ? " · Readable" : " · No content"}</small></span><button aria-label={`Edit ${book.title}`} onClick={() => editBook(book)}><Pencil size={15} />Edit</button><button aria-label={`${book.locked ? "Unlock" : "Lock"} ${book.title}`} onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, locked: !item.locked } : item))}>{book.locked ? <Unlock size={15} /> : <Lock size={15} />}{book.locked ? "Unlock" : "Lock"}</button><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div>
+                  <div className="admin-book-list">{books.map((book) => <div key={book.id}><span className={`admin-book-swatch ${book.color} ${book.image ? "has-image" : ""}`} style={book.image ? { backgroundImage: `url(${book.image})` } : undefined}>{!book.image && book.mark}</span><span><strong>{book.title}</strong><small>{book.author} · {book.level}{book.locked ? " · Locked" : richTextPlain(book.content) ? " · Readable" : " · No content"}{book.releaseAt && new Date(book.releaseAt).getTime() > clockNow ? ` · Scheduled ${new Date(book.releaseAt).toLocaleString()}` : book.visible === false ? " · Hidden" : " · Available"}</small></span><button aria-label={`Edit ${book.title}`} onClick={() => editBook(book)}><Pencil size={15} />Edit</button><button aria-label={`${book.locked ? "Unlock" : "Lock"} ${book.title}`} onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, locked: !item.locked } : item))}>{book.locked ? <Unlock size={15} /> : <Lock size={15} />}{book.locked ? "Unlock" : "Lock"}</button><button onClick={() => setBooks((current) => current.map((item) => item.id === book.id ? { ...item, visible: item.visible === false } : item))}>{book.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{book.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${book.title}`} onClick={() => setBooks((current) => current.filter((item) => item.id !== book.id))}><Trash2 size={15} /></button></div>)}</div>
                 </div>}
                 {adminTab === "articles" && <div className="admin-articles">
                   <form className="admin-article-form" onSubmit={addArticle}>
@@ -2349,12 +2362,13 @@ function App() {
                     <label>Title<input required value={newArticle.title} onChange={(event) => setNewArticle((current) => ({ ...current, title: event.target.value }))} placeholder="Article title" /></label>
                     <div className="admin-form-row"><label>Author<input value={newArticle.author} onChange={(event) => setNewArticle((current) => ({ ...current, author: event.target.value }))} placeholder="CO.T Editorial" /></label><label>Category<select value={newArticle.category} onChange={(event) => setNewArticle((current) => ({ ...current, category: event.target.value }))}><option>Strategy</option><option>Openings</option><option>Tactics</option><option>Endgames</option><option>Mindset</option></select></label></div>
                     <label>Short summary<textarea className="summary-field" value={newArticle.summary} onChange={(event) => setNewArticle((current) => ({ ...current, summary: event.target.value }))} placeholder="A short introduction for the article card" maxLength={220} /></label>
+                    <label className="release-schedule">Release date and time<input type="datetime-local" value={toDateTimeLocal(newArticle.releaseAt)} onChange={(event) => setNewArticle((current) => ({ ...current, releaseAt: toReleaseIso(event.target.value) }))} /><small>Use your local time. Leave blank to publish as soon as you save.</small></label>
                     <ImageUpload label="Article feature image" value={newArticle.image} onChange={(image) => setNewArticle((current) => ({ ...current, image }))} />
                     <RichTextEditor label="Article content" value={newArticle.content} onChange={(content) => setNewArticle((current) => ({ ...current, content }))} placeholder={"Write the full article here.\n\nUse blank lines to create readable paragraphs."} />
                     <small className="editor-count">{richTextPlain(newArticle.content).length.toLocaleString()} characters</small>
-                    <div className="publish-actions"><button className="primary-button" type="submit">{editingArticleId ? "Save article" : "Publish article"} <ArrowRight size={16} /></button>{editingArticleId && <button type="button" className="cancel-edit" onClick={cancelArticleEdit}>Cancel</button>}</div>
+                    <div className="publish-actions"><button className="primary-button" type="submit">{newArticle.releaseAt && new Date(newArticle.releaseAt).getTime() > clockNow ? "Schedule article" : editingArticleId ? "Save article" : "Publish article"} <ArrowRight size={16} /></button>{editingArticleId && <button type="button" className="cancel-edit" onClick={cancelArticleEdit}>Cancel</button>}</div>
                   </form>
-                  <div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span className={article.image ? "has-image" : ""} style={article.image ? { backgroundImage: `url(${article.image})` } : undefined}>{!article.image && <Lightbulb size={17} />}</span><div><strong>{article.title}</strong><small>{article.category} · {article.author}{article.locked ? " · Locked" : ""}</small></div><button aria-label={`Edit ${article.title}`} onClick={() => editArticle(article)}><Pencil size={15} />Edit</button><button aria-label={`${article.locked ? "Unlock" : "Lock"} ${article.title}`} onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, locked: !item.locked } : item))}>{article.locked ? <Unlock size={15} /> : <Lock size={15} />}{article.locked ? "Unlock" : "Lock"}</button><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div>
+                  <div className="admin-article-list">{articles.length ? articles.map((article) => <div key={article.id}><span className={article.image ? "has-image" : ""} style={article.image ? { backgroundImage: `url(${article.image})` } : undefined}>{!article.image && <Lightbulb size={17} />}</span><div><strong>{article.title}</strong><small>{article.category} · {article.author}{article.locked ? " · Locked" : ""}{article.releaseAt && new Date(article.releaseAt).getTime() > clockNow ? ` · Scheduled ${new Date(article.releaseAt).toLocaleString()}` : article.visible === false ? " · Hidden" : " · Available"}</small></div><button aria-label={`Edit ${article.title}`} onClick={() => editArticle(article)}><Pencil size={15} />Edit</button><button aria-label={`${article.locked ? "Unlock" : "Lock"} ${article.title}`} onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, locked: !item.locked } : item))}>{article.locked ? <Unlock size={15} /> : <Lock size={15} />}{article.locked ? "Unlock" : "Lock"}</button><button onClick={() => setArticles((current) => current.map((item) => item.id === article.id ? { ...item, visible: item.visible === false } : item))}>{article.visible === false ? <EyeOff size={15} /> : <Eye size={15} />}{article.visible === false ? "Hidden" : "Visible"}</button><button className="danger" aria-label={`Delete ${article.title}`} onClick={() => setArticles((current) => current.filter((item) => item.id !== article.id))}><Trash2 size={15} /></button></div>) : <div className="admin-empty"><Lightbulb size={30} /><strong>No articles yet</strong><span>Your published articles will appear here.</span></div>}</div>
                 </div>}
                 {adminTab === "settings" && <div className="admin-settings">
                   <section className="settings-card announcement-settings">

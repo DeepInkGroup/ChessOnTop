@@ -2726,6 +2726,10 @@ button svg {
 .editor-select.size select { width: 73px !important; }.editor-select.block select { width: 80px !important; }
 .editor-image-button { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 5px !important; height: 29px; padding: 0 9px; border: 1px solid #b8d0ad; border-radius: 5px; background: #e9f4e1; color: #476d49 !important; font-size: 8px !important; cursor: pointer; }
 .editor-image-input { position: absolute; width: 1px !important; height: 1px; min-height: 0 !important; overflow: hidden; padding: 0 !important; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.release-schedule { padding: 11px 12px !important; border: 1px solid #dfe8db !important; border-radius: 9px; background: #f7faf5 !important; color: #536d56 !important; }
+.release-schedule input { margin-top: 6px; }
+.release-schedule small { display: block; margin-top: 5px; color: #8a988b; font-size: 8px; font-weight: 500; line-height: 1.4; }
+.rich-editor-toolbar button[aria-label$="insert key idea"] { display: inline-flex; align-items: center; gap: 4px; color: #55794f; }
 .editor-image-placement { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; padding: 7px 9px; border: 1px solid #dce5d8; border-bottom: 0; background: #fafbf9; }
 .editor-image-placement label { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 6px !important; font-size: 8px !important; }
 .editor-image-placement select { width: auto !important; min-height: 28px !important; padding: 0 24px 0 8px !important; font-size: 8px !important; }
