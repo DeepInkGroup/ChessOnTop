@@ -393,6 +393,12 @@ const BASICS_DRILLS = [
   { question: "What is a passed pawn?", choices: ["A pawn with no enemy pawn able to stop it", "Any pawn on the fifth rank", "A pawn protected by a queen"], answer: 0, note: "A passed pawn has no opposing pawn ahead on its file or either adjacent file." },
   { question: "What should you do with a loose piece?", choices: ["Ignore it", "Defend or move it", "Move your king"], answer: 1, note: "Loose pieces often become tactical targets, so defend or improve them before they are attacked." },
   { question: "Which sequence is the best tactical scan?", choices: ["Checks, captures, threats", "Pawns, rooks, clocks", "Files, ranks, colors"], answer: 0, note: "Checks, captures, and threats reveal forcing moves before quieter plans." },
+  { question: "When a piece is pinned to your king, what is the first concern?", choices: ["Whether moving it exposes check", "How much it can attack", "Whether it is on a dark square"], answer: 0, note: "A piece pinned to the king cannot legally move if that would expose check." },
+  { question: "What is a useful response when your opponent attacks a piece?", choices: ["Check the threat before continuing your plan", "Always push a pawn", "Move the queen immediately"], answer: 0, note: "Pause to compare the threat with your candidate moves. A forcing move can sometimes answer it, but verify first." },
+  { question: "In a king and pawn endgame, what should you usually activate?", choices: ["Your king", "Your rook pawn", "The captured pieces"], answer: 0, note: "The king becomes an active fighting piece in the endgame and often supports its pawns." },
+  { question: "What makes a pawn a passed pawn?", choices: ["No enemy pawn can stop it on its route", "It has reached the seventh rank", "It is beside its king"], answer: 0, note: "A passed pawn has no opposing pawn ahead on its file or adjacent files to block its promotion route." },
+  { question: "Before making a move, what quick blunder check helps most?", choices: ["Can my opponent capture or check something now?", "Did I move a pawn this game?", "Is my queen on a light square?"], answer: 0, note: "After choosing a move, imagine the opponent's strongest check, capture, or threat before you play it." },
+  { question: "A good opening usually develops pieces toward…", choices: ["Useful central squares", "The edge of the board", "The same square repeatedly"], answer: 0, note: "Central squares give pieces more influence and make it easier to reach either side of the board." },
 ];
 const pieceCode = { k: "K", q: "Q", r: "R", b: "B", n: "N", p: "P" };
 const pieceName = {
@@ -1513,8 +1519,16 @@ function App() {
   function printPracticePdf() {
     const printWindow = window.open("", "_blank", "width=920,height=720");
     if (!printWindow) return;
+    const moves = mode === "practice" ? game.history() : makeGame(opening.moves).history();
+    const moveRows = [];
+    for (let index = 0; index < moves.length; index += 2) {
+      moveRows.push(`<tr><th>${index / 2 + 1}.</th><td>${escapeHtml(moves[index] || "")}</td><td>${escapeHtml(moves[index + 1] || "")}</td></tr>`);
+    }
+    const date = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date());
     const pgn = practicePgn();
-    printWindow.document.write(`<!doctype html><html><head><title>${escapeHtml(opening.name)} · Practice line</title><style>body{margin:0;padding:48px;color:#203b2c;font:16px/1.6 Georgia,serif}main{max-width:760px;margin:auto}h1{margin:0 0 6px;font-size:34px}p{color:#6f8173}pre{padding:22px;border:1px solid #d8e3d5;border-radius:10px;background:#f4f8f0;white-space:pre-wrap;font:14px/1.7 ui-monospace,monospace}@media print{body{padding:0}main{max-width:none}}</style></head><body><main><p>CO.T / ChessOn.Top · PRACTICE ROOM</p><h1>${escapeHtml(opening.name)}</h1><p>Exported practice line</p><pre>${escapeHtml(pgn)}</pre></main><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(opening.name)} · Practice sheet</title><style>
+      *{box-sizing:border-box}body{margin:0;padding:34px;background:#eef2eb;color:#203b2c;font:14px/1.5 Georgia,serif}main{max-width:780px;margin:auto;padding:38px 44px;background:#fff;box-shadow:0 10px 40px #1d392015}.brand{display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid #dce5d9;color:#64806a;font:800 10px/1.2 Arial,sans-serif;letter-spacing:1.3px}.eyebrow{margin:25px 0 4px;color:#6b8b62;font:800 9px Arial,sans-serif;letter-spacing:1.5px}h1{margin:0;color:#244a35;font-size:33px;line-height:1.1}.sub{margin:8px 0 21px;color:#78887a}.fields{display:grid;grid-template-columns:1fr 170px;gap:20px;margin:0 0 22px}.field{padding:7px 0;border-bottom:1px solid #b9c8b8;color:#718273;font-size:11px}.section{margin:20px 0}.section h2{margin:0 0 8px;color:#355942;font:700 15px Arial,sans-serif}.hint{margin:0 0 10px;color:#7d897d;font-size:11px}.moves{width:100%;border-collapse:collapse;font:13px/1.35 ui-monospace,Consolas,monospace}.moves th,.moves td{padding:5px 8px;border-bottom:1px solid #e8ede6;text-align:left}.moves th{width:38px;color:#829081;font-weight:500}.moves tr:nth-child(odd){background:#f7f9f5}.blank{height:35px;border-bottom:1px solid #d8e1d5}.blank.tall{height:52px}.checks{display:flex;gap:18px;color:#607363;font:11px Arial,sans-serif}.checks span:before{content:'□';margin-right:6px;color:#62845c;font-size:15px;vertical-align:-1px}.pgn{padding:10px 12px;border-radius:6px;background:#f3f6f1;color:#788578;white-space:pre-wrap;overflow-wrap:anywhere;font:9px/1.4 ui-monospace,monospace}.foot{margin-top:24px;padding-top:10px;border-top:1px solid #dce5d9;color:#8a9789;font:9px Arial,sans-serif}@page{size:A4;margin:14mm}@media print{body{padding:0;background:#fff}main{max-width:none;padding:0;box-shadow:none}.section,.fields{break-inside:avoid}}
+      </style></head><body><main><div class="brand"><span>CO.T / CHESSON.TOP</span><span>PERSONAL PRACTICE SHEET</span></div><p class="eyebrow">OPENING STUDY · ${escapeHtml(mode === "practice" ? "YOUR PRACTICE LINE" : "LIBRARY LINE")}</p><h1>${escapeHtml(opening.name)}</h1><p class="sub">Use the line, then write one idea you want to remember in your next game.</p><div class="fields"><div class="field">Player: __________________________________</div><div class="field">Date: ${escapeHtml(date)}</div></div><section class="section"><h2>Move scorecard</h2><p class="hint">Replay the moves on a board. Cover the right column to test your recall.</p><table class="moves"><tbody>${moveRows.join("") || "<tr><td colspan='3'>No moves recorded yet. Add a few moves in the practice room and export again.</td></tr>"}</tbody></table></section><section class="section"><h2>My plan for this line</h2><p class="hint">Which piece or square is central to the opening idea?</p><div class="blank"></div><div class="blank"></div></section><section class="section"><h2>Review checklist</h2><div class="checks"><span>I recalled the moves</span><span>I know the main idea</span><span>I spotted a danger</span></div></section><section class="section"><h2>Notes for my next game</h2><div class="blank tall"></div><div class="blank tall"></div></section><details><summary>PGN notation</summary><pre class="pgn">${escapeHtml(pgn)}</pre></details><div class="foot">Generated ${escapeHtml(date)} in CO.T / ChessOn.Top Practice Room</div></main><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`);
     printWindow.document.close();
   }
 
@@ -2111,10 +2125,10 @@ function App() {
                     <p className="thinking-intro">Create a free account to unlock the four-step scan and keep it beside your practice board.</p>
                     <button className="primary-button" onClick={() => chooseView("account")}><UserPlus size={15} /> Create your account <ArrowRight size={15} /></button>
                   </section>}
-                  <section className="basics-drill">
+                  {currentUser ? <section className="basics-drill">
                     <div className="drill-visual"><span>{String(Math.floor(basicsDrill.secondsLeft / 60)).padStart(2, "0")}:{String(basicsDrill.secondsLeft % 60).padStart(2, "0")}</span><Timer size={25} /><small>{basicsDrill.started ? "TIME REMAINING" : "STARTS WITH YOUR FIRST ANSWER"}</small><div><strong>{basicsDrill.streak}</strong><small>CURRENT STREAK</small></div></div>
                     <div className="drill-content">
-                      <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>Ten questions. Three minutes.</h2><p className="drill-intro">Train essential rules under light time pressure and build a clean recall streak.</p></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
+                      <div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>{BASICS_DRILLS.length} questions. Three minutes.</h2><p className="drill-intro">A quick mix of opening habits, tactics, king safety, and endgames. Learn from each answer as you go.</p></div><span className="coordinate-score">{basicsDrill.score} correct</span></div>
                       {!basicsDrill.complete ? <>
                         <div className="drill-status"><span>Question {basicsDrill.index + 1} of {BASICS_DRILLS.length}</span><span>Best streak <strong>{basicsDrill.bestStreak}</strong></span></div>
                         <div className="drill-progress" aria-label={`Question ${basicsDrill.index + 1} of ${BASICS_DRILLS.length}`}>{BASICS_DRILLS.map((_, index) => <span key={index} className={`${index < basicsDrill.answered ? "complete" : ""} ${index === basicsDrill.index ? "active" : ""}`} />)}</div>
@@ -2125,9 +2139,12 @@ function App() {
                           ))}
                         </div>
                         {basicsDrill.choice !== null && <div className={`drill-result ${basicsDrill.choice === drill.answer ? "correct" : ""}`}><span>{basicsDrill.choice === drill.answer ? <Check size={16} /> : <X size={16} />}</span><p><strong>{basicsDrill.choice === drill.answer ? "Correct." : "Keep this one in mind."}</strong> {drill.note}</p><button onClick={nextBasicsDrill}>{basicsDrill.answered >= BASICS_DRILLS.length ? "See results" : "Next question"} <ArrowRight size={15} /></button></div>}
-                      </> : <div className="drill-summary"><span><Trophy size={27} /></span><div><small>SPRINT COMPLETE</small><h3>{basicsDrill.score >= 8 ? "Foundation locked in." : basicsDrill.score >= 6 ? "A strong training run." : "Good first pass. Review and retry."}</h3><p>You scored <strong>{basicsDrill.score}/{BASICS_DRILLS.length}</strong> with a best streak of <strong>{basicsDrill.bestStreak}</strong>.</p></div><button onClick={restartBasicsDrill}><RotateCcw size={15} /> Run it again</button></div>}
+                      </> : <div className="drill-summary"><span><Trophy size={27} /></span><div><small>SPRINT COMPLETE</small><h3>{basicsDrill.score >= Math.ceil(BASICS_DRILLS.length * .8) ? "Foundation locked in." : basicsDrill.score >= Math.ceil(BASICS_DRILLS.length * .6) ? "A strong training run." : "Good first pass. Review and retry."}</h3><p>You scored <strong>{basicsDrill.score}/{BASICS_DRILLS.length}</strong> with a best streak of <strong>{basicsDrill.bestStreak}</strong>.</p></div><button onClick={restartBasicsDrill}><RotateCcw size={15} /> Run it again</button></div>}
                     </div>
-                  </section>
+                  </section> : <section className="basics-drill sprint-locked">
+                    <div className="drill-visual"><Lock size={27} /><small>MEMBER PRACTICE</small></div>
+                    <div className="drill-content"><div className="basics-tool-heading"><div><span className="eyebrow dark">NEW · FOUNDATION SPRINT</span><h2>A three minute chess warm-up.</h2><p className="drill-intro">Build fast recall across opening principles, tactics, king safety, and endgames. Your progress stays available for the session.</p></div><Lock size={19} /></div><div className="sprint-locked-bottom"><div><strong>{BASICS_DRILLS.length} quick questions</strong><span>Learn as you go · Run it again anytime</span></div><button className="primary-button" onClick={() => chooseView("account")}><UserPlus size={15} /> Create your account <ArrowRight size={15} /></button></div></div>
+                  </section>}
                 </div>
               </>
             )}
@@ -2595,7 +2612,7 @@ function App() {
                 <a href="https://t.me/DeepInkGroup" target="_blank" rel="noreferrer" aria-label="DeepInk Group on Telegram" title="Telegram">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 3.1 18.4 20c-.2 1.2-.9 1.5-1.9.9l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9-8.1c.4-.4-.1-.6-.6-.3L5.9 13.7 1.1 12.2c-1-.3-1-1 .2-1.5L20 3.5c.9-.3 1.7.2 1.6-.4Z" /></svg>
                 </a>
-                <a href="https://www.chess.com/member/azomorodian" target="_blank" rel="noreferrer" aria-label="Azomorodian on Chess.com" title="Chess.com">
+                <a href="https://lichess.org/@/CoMoBoBia" target="_blank" rel="noreferrer" aria-label="CoMoBoBia on Lichess" title="Lichess">
                   <span className="chesscom-icon" aria-hidden="true">♞</span>
                 </a>
                 <a href="https://github.com/DeepInkGroup" target="_blank" rel="noreferrer" aria-label="DeepInk Group on GitHub" title="GitHub">
@@ -2708,7 +2725,7 @@ function App() {
               label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : (orientation === "w" ? "Black" : "White")}
               detail={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? difficulty === "focused" ? "Focused opponent" : "Casual opponent" : "Study side"}
             />
-            <div className="board-wrap">
+            <div className={`board-wrap ${game.isCheckmate() ? "board-wrap-mate" : ""}`}>
               <Board
                 game={game}
                 orientation={orientation}
@@ -2725,6 +2742,9 @@ function App() {
                 arrowColor={arrowColor}
                 arrowWeight={arrowWeight}
               />
+              {mode === "play" && game.isCheckmate() && <div className="checkmate-banner" role="status" aria-live="assertive">
+                <span className="checkmate-crown">♛</span><small>GAME OVER</small><strong>Checkmate</strong><span>{game.turn() === "w" ? "Black" : "White"} wins</span>
+              </div>}
             </div>
             <PlayerRail
               color={orientation}
