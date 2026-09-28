@@ -2,15 +2,18 @@ import { Chess } from "chess.js";
 
 const enginePath = `${import.meta.env.BASE_URL}engine/stockfish-19-lite-single.js`;
 const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-export const DEFAULT_ENGINE_SETTINGS = { depth: 14, movetime: 550, reviewTime: 200, multiPv: 3, hash: 16, auto: true };
+export const DEFAULT_ENGINE_SETTINGS = { depth: 14, movetime: 550, reviewDepth: 14, reviewTime: 200, reviewLines: 2, multiPv: 3, hash: 16, auto: true };
+const depthOptions = [8, 12, 14, 16, 20, 24, 28, 32];
 
 function engineSettings(options = {}) {
   return {
-    depth: [8, 12, 14, 16, 20].includes(Number(options.depth)) ? Number(options.depth) : DEFAULT_ENGINE_SETTINGS.depth,
-    movetime: [200, 550, 1200, 2500].includes(Number(options.movetime)) ? Number(options.movetime) : DEFAULT_ENGINE_SETTINGS.movetime,
-    reviewTime: [200, 550, 1200].includes(Number(options.reviewTime)) ? Number(options.reviewTime) : DEFAULT_ENGINE_SETTINGS.reviewTime,
+    depth: depthOptions.includes(Number(options.depth)) ? Number(options.depth) : DEFAULT_ENGINE_SETTINGS.depth,
+    movetime: [200, 550, 1200, 2500, 5000, 10000].includes(Number(options.movetime)) ? Number(options.movetime) : DEFAULT_ENGINE_SETTINGS.movetime,
+    reviewDepth: depthOptions.includes(Number(options.reviewDepth)) ? Number(options.reviewDepth) : DEFAULT_ENGINE_SETTINGS.reviewDepth,
+    reviewTime: [200, 550, 1200, 2500, 5000].includes(Number(options.reviewTime)) ? Number(options.reviewTime) : DEFAULT_ENGINE_SETTINGS.reviewTime,
+    reviewLines: [2, 3, 5].includes(Number(options.reviewLines)) ? Number(options.reviewLines) : DEFAULT_ENGINE_SETTINGS.reviewLines,
     multiPv: [1, 2, 3, 5].includes(Number(options.multiPv)) ? Number(options.multiPv) : DEFAULT_ENGINE_SETTINGS.multiPv,
-    hash: [16, 32, 64].includes(Number(options.hash)) ? Number(options.hash) : DEFAULT_ENGINE_SETTINGS.hash,
+    hash: [16, 32, 64, 128].includes(Number(options.hash)) ? Number(options.hash) : DEFAULT_ENGINE_SETTINGS.hash,
   };
 }
 
@@ -96,6 +99,16 @@ function classifyMove({ chanceLoss, isBest, critical, sacrifice, missedWin }) {
   if (isBest) return "Best";
   if (chanceLoss < 1.5) return "Excellent";
   return "Good";
+}
+
+function findabilityEstimate({ legalMoves, bestMove, critical, sacrifice, candidateGap }) {
+  if (!bestMove) return null;
+  const forcing = bestMove.includes("#") ? 27 : bestMove.includes("+") ? 16 : bestMove.includes("x") ? 10 : 0;
+  const optionsPenalty = Math.min(28, Math.max(0, legalMoves - 8) * 0.8);
+  const quietPenalty = !/[x+#]/.test(bestMove) && legalMoves > 15 ? 8 : 0;
+  const uniqueBonus = critical ? forcing ? 5 : -9 : candidateGap < 2 ? -4 : 0;
+  const score = Math.round(72 + forcing + uniqueBonus - optionsPenalty - quietPenalty - (sacrifice ? 25 : 0));
+  return Math.max(10, Math.min(95, score));
 }
 
 function estimateGameElo(accuracy, avgLoss, count) {
@@ -190,7 +203,7 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
     await request(worker, signal, "uci", (line) => line === "uciok", null, 30000);
     worker.postMessage(`setoption name Hash value ${settings.hash}`);
     worker.postMessage("setoption name UCI_AnalyseMode value true");
-    worker.postMessage("setoption name MultiPV value 2");
+    worker.postMessage(`setoption name MultiPV value ${settings.reviewLines}`);
     await request(worker, signal, "isready", (line) => line === "readyok");
 
     const evaluate = async (fen) => {
@@ -202,7 +215,7 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
       let latest = { whiteCp: 0, mate: null, bestUci: null, line: "", pvUci: [], secondScore: null, depth: 0 };
       let secondDepth = 0;
       worker.postMessage(`position fen ${fen}`);
-      const result = await request(worker, signal, `go depth ${settings.depth} movetime ${settings.movetime}`, (line) => line.startsWith("bestmove "), (line) => {
+      const result = await request(worker, signal, `go depth ${settings.reviewDepth} movetime ${settings.movetime}`, (line) => line.startsWith("bestmove "), (line) => {
         if (!line.startsWith("info ") || !line.includes(" score ")) return;
         const depth = Number(line.match(/\bdepth (\d+)/)?.[1] || 0);
         const rank = Number(line.match(/\bmultipv (\d+)/)?.[1] || 1);
@@ -238,15 +251,20 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
       const { chanceLoss, accuracy } = moveAccuracy(before, after, played.color);
       const sign = played.color === "w" ? 1 : -1;
       const critical = isBest && legalMovesBefore > 1 && before.secondScore && winPercent(before.whiteCp * sign) - winPercent(before.secondScore.whiteCp * sign) >= 8;
-      let sacrifice = false;
-      if (isBest && before.pvUci[1] && pieceValues[played.piece] >= 3) {
+      const candidateGap = before.secondScore ? Math.max(0, winPercent(before.whiteCp * sign) - winPercent(before.secondScore.whiteCp * sign)) : 0;
+      let bestSacrifice = false;
+      if (before.bestUci && before.pvUci[1]) {
         try {
-          const reply = new Chess(game.fen()).move({ from: before.pvUci[1].slice(0, 2), to: before.pvUci[1].slice(2, 4), promotion: before.pvUci[1][4] });
-          sacrifice = Boolean(reply.captured && reply.to === played.to && pieceValues[played.piece] >= pieceValues[reply.piece] + 2 && winPercent(after.whiteCp * sign) >= 42);
-        } catch { sacrifice = false; }
+          const bestGame = new Chess(fenBefore);
+          const bestPlayed = bestGame.move({ from: before.bestUci.slice(0, 2), to: before.bestUci.slice(2, 4), promotion: before.bestUci[4] });
+          const reply = bestGame.move({ from: before.pvUci[1].slice(0, 2), to: before.pvUci[1].slice(2, 4), promotion: before.pvUci[1][4] });
+          bestSacrifice = Boolean(reply.captured && reply.to === bestPlayed.to && pieceValues[bestPlayed.piece] >= 3 && pieceValues[bestPlayed.piece] >= pieceValues[reply.piece] + 2 && winPercent(before.whiteCp * sign) >= 42);
+        } catch { bestSacrifice = false; }
       }
+      const sacrifice = isBest && bestSacrifice;
       const missedWin = winPercent(before.whiteCp * sign) >= 65 && winPercent(after.whiteCp * sign) < 55;
       const label = classifyMove({ chanceLoss, isBest, critical, sacrifice, missedWin });
+      const findability = findabilityEstimate({ legalMoves: legalMovesBefore, bestMove, critical: candidateGap >= 8, sacrifice: bestSacrifice, candidateGap });
       rows.push({
         index: index + plyOffset,
         san: played.san,
@@ -258,6 +276,9 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
         label,
         isBest,
         bestMove,
+        findability,
+        legalMovesBefore,
+        candidateGap: Math.round(candidateGap * 10) / 10,
         engineLine: before.line,
         beforeScore: before,
         afterScore: after,

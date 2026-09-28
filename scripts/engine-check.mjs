@@ -34,6 +34,19 @@ try {
     await page.screenshot({ path: resolve(output, `practice-${name}.png`) });
     await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
     await page.locator('.board-wrap [aria-label="e4"]').click();
+    if (name === "desktop") {
+      await page.getByRole("button", { name: "Enlarge board" }).click();
+      const focus = page.getByRole("dialog", { name: "Large chess board" });
+      await focus.getByRole("button", { name: "Undo move on large board" }).click();
+      assert.equal(await focus.locator('[aria-label="e2 white pawn"]').count(), 1);
+      await focus.getByRole("button", { name: "Close large board" }).click();
+      await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
+      await page.locator('.board-wrap [aria-label="e4"]').click();
+    }
+    await page.getByRole("button", { name: "Undo move", exact: true }).click();
+    assert.equal(await page.locator('.board-wrap [aria-label="e2 white pawn"]').count(), 1, `${name} practice undo should restore the position`);
+    await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
+    await page.locator('.board-wrap [aria-label="e4"]').click();
     await page.getByRole("button", { name: /Analyze with Stockfish/ }).click();
     const report = page.getByRole("dialog", { name: "Practice engine analysis" });
     await report.waitFor();
@@ -55,13 +68,20 @@ try {
     await page.locator(`.board-wrap [aria-label="${whiteToMove ? "f3" : "f6"}"]`).click();
     assert.equal(await page.locator(".live-board-moves button").count(), beforeMoveCount + 1);
     await page.waitForFunction(() => document.querySelectorAll('.live-chart-grid .data-chart:first-child circle').length >= 2, null, { timeout: 60000 });
-    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByRole("button", { name: "Undo move", exact: true }).click();
+    assert.equal(await page.locator(".live-board-moves button").count(), beforeMoveCount);
+    if (name === "desktop") await page.getByRole("combobox", { name: "Review candidates" }).selectOption("3");
     await page.getByRole("textbox", { name: "PGN to analyze" }).fill("1. d4 d5 2. c4");
     await page.getByRole("button", { name: /Load game/ }).click();
     await page.getByText(/Loaded 3 moves/).waitFor();
     await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
     await page.waitForFunction(() => document.querySelectorAll('.live-chart-grid .data-chart:first-child circle').length === 4, null, { timeout: 60000 });
     await page.locator(".live-review-list button").first().click();
+    if (name === "desktop") assert.match(await page.locator(".live-review-settings-note").innerText(), /3 candidates/);
+    assert.match(await page.locator(".live-move-notebook").innerText(), /Human findability of the engine move/);
+    assert.doesNotMatch(await page.locator(".live-opening-route h3").innerText(), /No catalog match yet/);
+    await page.locator(".live-move-notebook").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(output, `review-${name}.png`) });
     assert.equal(await page.locator(".live-board-moves button").count(), 4, `${name} review navigation should keep the full game`);
     assert.match(await page.locator(".live-center-heading > span").innerText(), /1\/3 moves/);
     await page.locator(".live-board-moves button").last().click();
@@ -82,6 +102,13 @@ try {
       });
       assert.ok(centered < 70, `desktop board should be centered in the main arena: ${centered}px`);
       await page.getByRole("combobox", { name: "Engine depth" }).selectOption("8");
+      await page.getByRole("combobox", { name: "Review depth" }).selectOption("32");
+      await page.getByRole("combobox", { name: "Review candidates" }).selectOption("5");
+      await page.getByRole("combobox", { name: "Review time per move" }).selectOption("5000");
+      assert.equal(await page.getByRole("combobox", { name: "Review depth" }).inputValue(), "32");
+      await page.getByRole("combobox", { name: "Review depth" }).selectOption("14");
+      await page.getByRole("combobox", { name: "Review candidates" }).selectOption("2");
+      await page.getByRole("combobox", { name: "Review time per move" }).selectOption("200");
       await page.getByRole("combobox", { name: "Engine lines" }).selectOption("1");
       await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
       assert.equal(await page.locator(".live-variations > div").count(), 1);

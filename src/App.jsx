@@ -1201,6 +1201,7 @@ function App() {
     () => makeGame(displayedMoves),
     [displayedMoves.join(" ")],
   );
+  const canUndoBoardMove = view === "analysis" ? displayedMoves.length > 0 : mode === "play" ? playMoves.some((_, index) => index % 2 === (playSide === "w" ? 0 : 1)) : mode === "practice" ? practiceMoves.some((_, index) => index >= practiceSeedPly && index % 2 === (practiceSide === "w" ? 0 : 1)) : mode === "explore" ? freeMoves.length > 0 : ply > 0;
   const liveFen = view === "analysis" ? game.fen() : null;
   useEffect(() => {
     if (!liveFen) return;
@@ -1236,6 +1237,17 @@ function App() {
     }
     return null;
   }, [view, displayedMoves.join(" ")]);
+  const analysisOpeningTimeline = useMemo(() => {
+    if (view !== "analysis") return [];
+    const replay = new Chess();
+    let latest = null;
+    return freeMoves.map((san, index) => {
+      replay.move(san);
+      if (index < 30) latest = OPENING_BY_LINE.get(freeMoves.slice(0, index + 1).join(" ")) || OPENING_BY_POSITION.get(replay.fen().split(" ").slice(0, 4).join(" ")) || latest;
+      return latest;
+    });
+  }, [view, freeMoves.join(" ")]);
+  const analysisGameOpening = analysisOpeningTimeline.at(-1) || null;
   const availablePracticeMoves = opening.moves.filter(
     (_, index) => index % 2 === (practiceSide === "w" ? 0 : 1),
   ).length;
@@ -1714,6 +1726,38 @@ function App() {
     setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "", releaseAt: "" });
   }
 
+  function undoBoardMove() {
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+    setBoardArrows([]);
+    if (view === "analysis") {
+      const count = analysisPly ?? freeMoves.length;
+      if (!count) return;
+      liveBackfillRef.current?.abort();
+      setLiveHistoryProgress(null);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
+      setFreeMoves((current) => current.slice(0, count - 1));
+      setAnalysisPly(null);
+    } else if (mode === "play") {
+      setPlayMoves((current) => current.slice(0, Math.max(0, current.length - (current.length % 2 === (playSide === "w" ? 0 : 1) ? 2 : 1))));
+    } else if (mode === "practice") {
+      if (!canUndoBoardMove) return;
+      let target = practiceMoves.length - 1;
+      if (!practiceFree && target > practiceSeedPly && target % 2 !== (practiceSide === "w" ? 0 : 1)) target -= 1;
+      const next = practiceMoves.slice(0, Math.max(practiceSeedPly, target));
+      const guided = next.every((move, index) => move === opening.moves[index]);
+      setPracticeMoves(next);
+      setPracticeFree(!guided);
+      if (guided) setPracticePly(next.length);
+      setPracticeFeedback("Last move taken back. Try the position again.");
+    } else if (mode === "explore") {
+      setFreeMoves((current) => current.slice(0, -1));
+    } else if (mode === "learn") {
+      setPly((current) => Math.max(0, current - 1));
+      setPlaying(false);
+    }
+  }
+
   function startPracticeCheckpoint(id, side = practiceSide) {
     const checkpoint = PRACTICE_CHECKPOINTS.find((item) => item.id === id) || PRACTICE_CHECKPOINTS[0];
     const playerMoves = opening.moves.map((_, index) => index).filter((index) => index % 2 === (side === "w" ? 0 : 1));
@@ -1823,7 +1867,7 @@ function App() {
   }
 
   function updateEngineSetting(name, value) {
-    if (["depth", "reviewTime", "hash"].includes(name)) {
+    if (["reviewDepth", "reviewTime", "reviewLines", "hash"].includes(name)) {
       liveBackfillRef.current?.abort();
       setLiveHistoryProgress(null);
       setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
@@ -2743,7 +2787,7 @@ function App() {
                 </div>}
               </section>
             )}
-            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} currentPly={displayedMoves.length} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} review={liveReview} board={liveBoard} settings={{ ...DEFAULT_ENGINE_SETTINGS, ...engineSettings }} onSettingsChange={updateEngineSetting} onAnalyzeNow={() => setManualAnalysisRequest({ fen: game.fen(), id: Date.now() })} onReviewGame={() => backfillLiveHistory(freeMoves)} openingName={analysisOpening?.name || recognizedOpening?.name} onUndo={() => selectAnalysisPly(Math.max(0, displayedMoves.length - 1))} onReset={() => { liveBackfillRef.current?.abort(); setFreeMoves([]); setAnalysisPly(null); setLiveHistory([]); setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 }); setLiveHistoryProgress(null); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} onSelectPly={selectAnalysisPly} />}
+            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} currentPly={displayedMoves.length} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} review={liveReview} board={liveBoard} settings={{ ...DEFAULT_ENGINE_SETTINGS, ...engineSettings }} onSettingsChange={updateEngineSetting} onAnalyzeNow={() => setManualAnalysisRequest({ fen: game.fen(), id: Date.now() })} onReviewGame={() => backfillLiveHistory(freeMoves)} openingName={analysisOpening?.name || recognizedOpening?.name} gameOpening={analysisGameOpening} openingTimeline={analysisOpeningTimeline} onUndo={undoBoardMove} onReset={() => { liveBackfillRef.current?.abort(); setFreeMoves([]); setAnalysisPly(null); setLiveHistory([]); setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 }); setLiveHistoryProgress(null); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} onSelectPly={selectAnalysisPly} />}
             {view !== "overview" && view !== "basics" && view !== "play" && view !== "analysis" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
               <>
                 <div className="page-heading">
@@ -3195,10 +3239,7 @@ function App() {
                   </div>
                 </div>
                 <div className="play-actions">
-                  <button onClick={() => {
-                    setPlayMoves((current) => current.slice(0, Math.max(0, current.length - (current.length % 2 === (playSide === "w" ? 0 : 1) ? 2 : 1))));
-                    setSelectedSquare(null);
-                  }} disabled={!playMoves.length}><ChevronLeft size={16} /> Take back</button>
+                  <button onClick={undoBoardMove} disabled={!canUndoBoardMove}><ChevronLeft size={16} /> Take back</button>
                   <button onClick={() => { setPlayMoves([]); setSelectedSquare(null); setPendingPromotion(null); }}><RotateCcw size={16} /> New game</button>
                 </div>
               </div>
@@ -3293,6 +3334,7 @@ function App() {
                   </button>
                 </div>
                 <div className="practice-actions">
+                  <button onClick={undoBoardMove} disabled={!canUndoBoardMove}><Undo2 size={16} /> Undo move</button>
                   <button onClick={() => setShowHint(true)} disabled={practiceFree || practiceStyle === "challenge"}>
                     <Lightbulb size={16} /> Hint
                   </button>
@@ -3313,6 +3355,7 @@ function App() {
             {mode === "explore" && view !== "analysis" && (
               <div className="explore-controls">
                 <span>Play any legal move to explore a position.</span>
+                <button onClick={undoBoardMove} disabled={!canUndoBoardMove}><Undo2 size={16} /> Undo move</button>
                 <button
                   onClick={() => {
                     setFreeMoves([]);
@@ -3480,8 +3523,8 @@ function App() {
         <div className="focus-board-overlay" role="dialog" aria-modal="true" aria-label="Large chess board">
           <div className="focus-board-stage">
             <div className="focus-board-header">
-              <div><span className="eyebrow">FOCUS BOARD</span><strong>{view === "analysis" ? recognizedOpening?.name || "Live analysis" : mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
-              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
+              <div><span className="eyebrow">FOCUS BOARD</span><strong>{view === "analysis" ? analysisOpening?.name || recognizedOpening?.name || "Live analysis" : mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
+              <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div><button className="focus-flip" aria-label="Undo move on large board" title="Undo move" disabled={!canUndoBoardMove} onClick={undoBoardMove}><Undo2 size={18} /></button><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
             <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />
             <div className="focus-board-shell"><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={mode === "play" ? (computerThinking || playResult ? null : playSide) : game.turn()} theme={boardTheme} showLegalMoves={mode !== "practice" || practiceStyle === "guided"} showCoordinates={showBoardCoordinates} showLastMove={showLastMove} arrows={boardArrows} onArrowsChange={setBoardArrows} arrowColor={arrowColor} arrowWeight={arrowWeight} /></div>
