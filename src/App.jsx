@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import {
+  Activity,
   ArrowRight,
   ArrowUpRight,
   Bold,
@@ -61,8 +62,9 @@ import openingsC from "./data/openings-c.json";
 import openingsD from "./data/openings-d.json";
 import openingsE from "./data/openings-e.json";
 import { createOpeningBook, gameResult, pickComputerMove } from "./play";
-import { analyzePracticeMoves } from "./analysisEngine";
+import { analyzePosition, analyzePracticeMoves } from "./analysisEngine";
 import EngineReport from "./EngineReport";
+import LiveAnalysisPage from "./LiveAnalysisPage";
 
 const rawOpenings = [
   ...openingsA,
@@ -1088,6 +1090,10 @@ function App() {
   const [selectedAnalysisMove, setSelectedAnalysisMove] = useState(0);
   const analysisAbortRef = useRef(null);
   const analysisRunRef = useRef(0);
+  const [liveAnalysis, setLiveAnalysis] = useState({ status: "idle", data: null, error: "" });
+  const [liveHistory, setLiveHistory] = useState([]);
+  const [liveHistoryProgress, setLiveHistoryProgress] = useState(null);
+  const liveBackfillRef = useRef(null);
   const [showHint, setShowHint] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [orientation, setOrientation] = useState("w");
@@ -1191,6 +1197,24 @@ function App() {
     () => makeGame(displayedMoves),
     [displayedMoves.join(" ")],
   );
+  const liveFen = view === "analysis" ? game.fen() : null;
+  useEffect(() => {
+    if (!liveFen) return;
+    const controller = new AbortController();
+    const currentPly = freeMoves.length;
+    const label = currentPly ? `${Math.ceil(currentPly / 2)}${currentPly % 2 ? "." : "..."} ${freeMoves.at(-1)}` : "Start";
+    setLiveAnalysis({ status: "running", data: null, error: "" });
+    const timer = setTimeout(() => {
+      analyzePosition(liveFen, controller.signal).then((data) => {
+        if (controller.signal.aborted) return;
+        setLiveAnalysis({ status: "ready", data, error: "" });
+        setLiveHistory((current) => [...current.filter((point) => point.ply < currentPly), { ply: currentPly, label, score: data.score.whiteCp, material: data.material }]);
+      }).catch((error) => {
+        if (!controller.signal.aborted) setLiveAnalysis({ status: "error", data: null, error: error.message });
+      });
+    }, 120);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [liveFen]);
   const recognizedOpening =
     mode === "explore" || mode === "play" || (mode === "practice" && practiceFree)
       ? OPENING_BY_LINE.get(displayedMoves.join(" ")) ||
@@ -1334,6 +1358,7 @@ function App() {
     };
   }, [analysisOpen]);
   useEffect(() => () => analysisAbortRef.current?.abort(), []);
+  useEffect(() => () => liveBackfillRef.current?.abort(), []);
 
   function resetForOpening(item) {
     if (view === "collection") setCollectionOpeningChosen(true);
@@ -1384,6 +1409,18 @@ function App() {
       setPracticeFeedback("");
       setShowHint(false);
       setPracticeMistakes(0);
+    }
+    if (next === "analysis") {
+      setMode("explore");
+      setFreeMoves([]);
+      setLiveAnalysis({ status: "idle", data: null, error: "" });
+      setLiveHistory([]);
+      setLiveHistoryProgress(null);
+      setSelectedSquare(null);
+      setBoardArrows([]);
+    } else {
+      liveBackfillRef.current?.abort();
+      setLiveHistoryProgress(null);
     }
     if (next === "basics") {
       setMode("explore");
@@ -1459,6 +1496,10 @@ function App() {
       setPendingPromotion({ from, to, color: move.color });
       return;
     }
+    if (view === "analysis") {
+      liveBackfillRef.current?.abort();
+      setLiveHistoryProgress(null);
+    }
     if (mode === "practice") {
       if (practiceFree) {
         setPracticeMoves((current) => [...current, move.san]);
@@ -1513,6 +1554,7 @@ function App() {
     basics: "Learn the basics",
     openings: "Opening library",
     practice: "Practice room",
+    analysis: "Live analysis",
     play: "Play a game",
     collection: "My repertoire",
     books: "Chess books",
@@ -1525,6 +1567,7 @@ function App() {
     { id: "openings", label: "Opening library", icon: BookOpen },
     { id: "basics", label: "Learn the basics", icon: GraduationCap },
     { id: "practice", label: "Practice room", icon: Target },
+    { id: "analysis", label: "Live analysis", icon: Activity },
     { id: "play", label: "Play a game", icon: Swords },
     { id: "books", label: "Books", icon: Library },
     { id: "articles", label: "Articles", icon: Lightbulb },
@@ -1698,6 +1741,55 @@ function App() {
     }).finally(() => {
       if (analysisRunRef.current === runId) analysisAbortRef.current = null;
     });
+  }
+
+  function openLiveFromPractice() {
+    closeEngineAnalysis();
+    chooseView("analysis");
+    setFreeMoves([...practiceMoves]);
+    setOrientation(practiceSide);
+    backfillLiveHistory(practiceMoves);
+  }
+
+  function backfillLiveHistory(moves) {
+    liveBackfillRef.current?.abort();
+    if (!moves.length) return;
+    const controller = new AbortController();
+    liveBackfillRef.current = controller;
+    setLiveHistoryProgress({ done: 0, total: moves.length });
+    const timer = setTimeout(() => {
+      if (controller.signal.aborted) return;
+      analyzePracticeMoves(moves, "w", controller.signal, ({ done, total, rows }) => {
+        if (controller.signal.aborted) return;
+        setLiveHistoryProgress({ done, total });
+        if (rows.length) setLiveHistory([{ ply: 0, label: "Start", score: rows[0].beforeScore.whiteCp, material: 0 }, ...rows.map((row, index) => ({ ply: index + 1, label: `${Math.floor(index / 2) + 1}${row.color === "w" ? "." : "..."} ${row.san}`, score: row.afterScore.whiteCp, material: row.material }))]);
+      }).then(() => {
+        if (!controller.signal.aborted) setLiveHistoryProgress(null);
+      }).catch((error) => {
+        if (!controller.signal.aborted) setLiveHistoryProgress({ error: error.message, done: 0, total: moves.length });
+      });
+    }, 1000);
+    controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  }
+
+  function importAnalysisPgn(pgn) {
+    if (pgn.length > 30000) return { ok: false, message: "This PGN is too long. Load a shorter game." };
+    if (/^\[FEN\s+/im.test(pgn)) return { ok: false, message: "This studio currently loads PGNs from the standard starting position." };
+    try {
+      const imported = new Chess();
+      imported.loadPgn(pgn);
+      const moves = imported.history();
+      if (!moves.length) return { ok: false, message: "No legal moves were found in that PGN." };
+      if (moves.length > 160) return { ok: false, message: "Load a game with 160 moves or fewer for full chart analysis." };
+      setFreeMoves(moves);
+      setLiveHistory([]);
+      setSelectedSquare(null);
+      setBoardArrows([]);
+      backfillLiveHistory(moves);
+      return { ok: true, message: `Loaded ${moves.length} moves. The engine is evaluating the final position.` };
+    } catch {
+      return { ok: false, message: "The PGN could not be read. Check the move notation and try again." };
+    }
   }
 
   function practicePgn() {
@@ -1914,7 +2006,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${view === "practice" ? "practice-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
+    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${view === "practice" ? "practice-mode" : ""} ${view === "analysis" ? "analysis-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div
           className="brand"
@@ -2597,7 +2689,8 @@ function App() {
                 </div>}
               </section>
             )}
-            {view !== "overview" && view !== "basics" && view !== "play" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
+            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} openingName={recognizedOpening?.name} onUndo={() => { liveBackfillRef.current?.abort(); setLiveHistoryProgress(null); setFreeMoves((current) => current.slice(0, -1)); setSelectedSquare(null); setBoardArrows([]); }} onReset={() => { liveBackfillRef.current?.abort(); setLiveHistoryProgress(null); setFreeMoves([]); setLiveHistory([]); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} />}
+            {view !== "overview" && view !== "basics" && view !== "play" && view !== "analysis" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
               <>
                 <div className="page-heading">
                   <div>
@@ -2860,14 +2953,14 @@ function App() {
           {!(["overview", "basics", "books", "articles", "account", "admin"].includes(view)) && !(view === "collection" && !collectionOpeningChosen) && <aside className="study-panel" id="study-panel">
             <div className="study-top">
               <div>
-                <span className="eyebrow dark">YOUR STUDY SPACE</span>
+                <span className="eyebrow dark">{view === "analysis" ? "LIVE ENGINE BOARD" : "YOUR STUDY SPACE"}</span>
                 <h2>
-                  On the board <span>↗</span>
+                  {view === "analysis" ? "Analysis board" : "On the board"} <span>↗</span>
                 </h2>
               </div>
               <div className="study-top-actions">
               <button className="panel-focus" aria-label="Enlarge board" title="Enlarge board" onClick={() => setBoardFocus(true)}><Maximize2 size={17} /></button>
-              {!(view === "basics" && mode === "explore") && (
+              {view !== "analysis" && !(view === "basics" && mode === "explore") && (
                 <button
                   className={`panel-save ${favorites.includes(opening.id) ? "saved" : ""}`}
                   aria-label={
@@ -2887,7 +2980,7 @@ function App() {
               )}
               </div>
             </div>
-            <div className="mode-tabs" role="tablist" aria-label="Study mode">
+            {view === "analysis" ? <div className="live-board-status"><span className={`live-status-dot ${liveAnalysis.status}`}/>{liveAnalysis.status === "running" ? "Stockfish is thinking" : liveAnalysis.status === "error" ? "Engine needs another try" : `Stockfish ready · depth ${liveAnalysis.data?.depth || 0}`}</div> : <div className="mode-tabs" role="tablist" aria-label="Study mode">
               <button
                 role="tab"
                 aria-selected={mode === "learn"}
@@ -2920,10 +3013,12 @@ function App() {
               >
                 Play
               </button>
-            </div>
+            </div>}
             <div className="study-opening">
               <span className="eco-pill dark-pill">
-                {mode === "play"
+                {view === "analysis"
+                  ? recognizedOpening?.eco || "LIVE"
+                  : mode === "play"
                   ? "GAME"
                   : mode === "practice" && practiceFree
                   ? recognizedOpening?.eco || "FREE"
@@ -2933,7 +3028,9 @@ function App() {
               </span>
               <div>
                 <h3>
-                  {mode === "play"
+                  {view === "analysis"
+                    ? recognizedOpening?.name || "Free analysis"
+                    : mode === "play"
                     ? recognizedOpening?.name || "Your game"
                     : mode === "practice" && practiceFree
                     ? recognizedOpening?.name || "Exploring a new line"
@@ -2942,7 +3039,9 @@ function App() {
                     : opening.name}
                 </h3>
                 <p>
-                  {mode === "play"
+                  {view === "analysis"
+                    ? recognizedOpening ? "Opening recognized from your moves" : "Play any legal move or load a PGN"
+                    : mode === "play"
                     ? recognizedOpening ? "Opening recognized from your moves" : "Play from the starting position"
                     : mode === "practice" && practiceFree
                     ? recognizedOpening ? "Opening updated from the moves you played" : "Keep playing — recognition updates after every move"
@@ -2973,7 +3072,7 @@ function App() {
                 showLegalMoves={mode !== "practice" || practiceStyle === "guided"}
                 showCoordinates={showBoardCoordinates}
                 showLastMove={showLastMove}
-                arrows={boardArrows}
+                arrows={view === "analysis" && liveAnalysis.data?.fen === game.fen() && liveAnalysis.data.lines[0] ? [...boardArrows, { from: liveAnalysis.data.lines[0].from, to: liveAnalysis.data.lines[0].to, color: "green", weight: "regular" }] : boardArrows}
                 onArrowsChange={setBoardArrows}
                 arrowColor={arrowColor}
                 arrowWeight={arrowWeight}
@@ -3157,7 +3256,7 @@ function App() {
                 <div className="practice-engine-launch"><span><Zap size={17} /> ENGINE REVIEW</span><strong>See the story behind your moves.</strong><p>Get an evaluation chart, move quality, missed ideas, and the engine's preferred line.</p><button onClick={runEngineAnalysis} disabled={!hasPlayedPracticeMove}><Sparkles size={15} /> Analyze with Stockfish <ArrowRight size={14} /></button>{!hasPlayedPracticeMove && <small>Play a move on the board to unlock analysis.</small>}</div>
               </div>
             )}
-            {mode === "explore" && (
+            {mode === "explore" && view !== "analysis" && (
               <div className="explore-controls">
                 <span>Play any legal move to explore a position.</span>
                 <button
@@ -3179,7 +3278,7 @@ function App() {
                     : mode === "practice"
                     ? practiceFree ? "Your free practice" : "Your practice line"
                     : mode === "explore"
-                      ? "Moves played"
+                      ? view === "analysis" ? "Analyzed moves" : "Moves played"
                       : "Main line"}
                 </strong>
                 <span>
@@ -3214,10 +3313,10 @@ function App() {
                         } else if (mode === "play") {
                           setPlayMoves((current) => current.slice(0, index + 1));
                           setSelectedSquare(null);
-                        } else if (mode === "explore")
-                          setFreeMoves((current) =>
-                            current.slice(0, index + 1),
-                          );
+                        } else if (mode === "explore") {
+                          if (view === "analysis") { liveBackfillRef.current?.abort(); setLiveHistoryProgress(null); }
+                          setFreeMoves((current) => current.slice(0, index + 1));
+                        }
                       }}
                       disabled={mode === "practice"}
                     >
@@ -3267,7 +3366,7 @@ function App() {
               </div>
               </div>
             )}
-            {mode !== "play" && <div className="insight-card">
+            {mode !== "play" && view !== "analysis" && <div className="insight-card">
               <div className="insight-heading">
                 <span>
                   <Lightbulb size={17} />
@@ -3300,7 +3399,7 @@ function App() {
           </aside>}
         </div>
       </div>
-      {analysisOpen && <EngineReport state={analysisState} selected={selectedAnalysisMove} onSelect={setSelectedAnalysisMove} onClose={closeEngineAnalysis} onCancel={cancelEngineAnalysis} onRetry={runEngineAnalysis} openingName={practiceFree ? recognizedOpening?.name || "Free practice" : opening.name} playerSide={practiceSide} />}
+      {analysisOpen && <EngineReport state={analysisState} selected={selectedAnalysisMove} onSelect={setSelectedAnalysisMove} onClose={closeEngineAnalysis} onCancel={cancelEngineAnalysis} onRetry={runEngineAnalysis} onOpenLive={openLiveFromPractice} renderPosition={(fen) => <Board game={new Chess(fen)} orientation={practiceSide} compact theme={boardTheme} showLegalMoves={false} showCoordinates={true}/>} openingName={practiceFree ? recognizedOpening?.name || "Free practice" : opening.name} playerSide={practiceSide} />}
       {selectedBook && (
         <div className="reader-overlay" role="dialog" aria-modal="true" aria-label={`Reading ${selectedBook.title}`} onClick={() => setSelectedBook(null)}>
           <article className="reader-page" onClick={(event) => event.stopPropagation()}>
@@ -3327,7 +3426,7 @@ function App() {
         <div className="focus-board-overlay" role="dialog" aria-modal="true" aria-label="Large chess board">
           <div className="focus-board-stage">
             <div className="focus-board-header">
-              <div><span className="eyebrow">FOCUS BOARD</span><strong>{mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
+              <div><span className="eyebrow">FOCUS BOARD</span><strong>{view === "analysis" ? recognizedOpening?.name || "Live analysis" : mode === "play" ? recognizedOpening?.name || "Your game" : mode === "practice" && practiceFree ? recognizedOpening?.name || "Free practice" : opening.name}</strong></div>
               <div className="focus-header-actions"><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)} />)}</div><button className="focus-flip" aria-label="Flip large board" onClick={() => setOrientation((value) => value === "w" ? "b" : "w")}><FlipHorizontal size={18} /></button><button className="focus-close" aria-label="Close large board" onClick={() => setBoardFocus(false)}><X size={20} /></button></div>
             </div>
             <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={mode === "play" && playSide !== (orientation === "w" ? "b" : "w") ? "CO.T Coach" : orientation === "w" ? "Black" : "White"} detail={mode === "play" ? "Opponent" : "Study side"} />

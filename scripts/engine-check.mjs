@@ -21,16 +21,16 @@ let browser;
 try {
   browser = await chromium.launch({ executablePath: chrome, headless: true, args: ["--no-sandbox"] });
   const errors = [];
-  for (const [name, width, height] of [["phone", 390, 844], ["tablet", 768, 1024], ["ipad", 1024, 768]]) {
+  for (const [name, width, height] of [["phone", 390, 844], ["tablet", 768, 1024], ["ipad", 1024, 768], ["desktop", 1440, 900]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     page.on("pageerror", (error) => errors.push(`${name}: ${error.message}`));
     await page.goto(server.resolvedUrls.local[0], { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Open menu" }).click();
+    if (width <= 1050) await page.getByRole("button", { name: "Open menu" }).click();
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Practice room" }).click();
     await page.waitForTimeout(300);
     const boardTop = await page.locator(".board-wrap").evaluate((board) => board.getBoundingClientRect().top + scrollY);
     const catalogTop = await page.locator("#practice-lines").evaluate((panel) => panel.getBoundingClientRect().top + scrollY);
-    assert.ok(boardTop < catalogTop, `${name} board should appear before the opening catalog`);
+    if (width <= 1050) assert.ok(boardTop < catalogTop, `${name} board should appear before the opening catalog`);
     await page.screenshot({ path: resolve(output, `practice-${name}.png`) });
     await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
     await page.locator('.board-wrap [aria-label="e4"]').click();
@@ -40,11 +40,35 @@ try {
     await report.locator(".analysis-metrics").waitFor({ timeout: 60000 });
     assert.ok((await report.locator(".analysis-move-list button").count()) >= 1);
     assert.match(await report.locator(".analysis-best-line").innerText(), /ENGINE CHOICE/);
+    assert.equal(await report.locator(".analysis-mini-board .board").count(), 1);
+    assert.equal(await report.locator(".analysis-chart-grid .data-chart").count(), 2);
+    assert.equal(await report.locator(".quality-mix").count(), 1);
     assert.equal(await page.locator("body").evaluate((body) => body.scrollWidth <= innerWidth + 1), true, `${name} has horizontal overflow`);
     await page.screenshot({ path: resolve(output, `engine-${name}.png`) });
-    await report.getByRole("button", { name: "Close analysis" }).click();
+    await report.getByRole("button", { name: /Open in Live Analysis/ }).click();
+    await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
+    assert.equal(await page.locator(".live-variations > div").count(), 3, `${name} should show three engine lines`);
+    assert.equal(await page.locator(".analysis-mode").count(), 1);
+    const beforeMoveCount = await page.locator(".move-list button").count();
+    const whiteToMove = (await page.locator(".live-hero-status").innerText()).includes("White to move");
+    await page.locator(`.board-wrap [aria-label="${whiteToMove ? "g1 white" : "g8 black"} knight"]`).click();
+    await page.locator(`.board-wrap [aria-label="${whiteToMove ? "f3" : "f6"}"]`).click();
+    assert.equal(await page.locator(".move-list button").count(), beforeMoveCount + 1);
+    await page.waitForFunction(() => document.querySelectorAll('.live-chart-grid .data-chart:first-child circle').length >= 2, null, { timeout: 60000 });
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByRole("textbox", { name: "PGN to analyze" }).fill("1. d4 d5 2. c4");
+    await page.getByRole("button", { name: /Load game/ }).click();
+    await page.getByText(/Loaded 3 moves/).waitFor();
+    await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
+    await page.waitForFunction(() => document.querySelectorAll('.live-chart-grid .data-chart:first-child circle').length === 4, null, { timeout: 60000 });
+    assert.equal(await page.locator("body").evaluate((body) => body.scrollWidth <= innerWidth + 1), true, `${name} live page has horizontal overflow`);
+    await page.screenshot({ path: resolve(output, `live-${name}.png`) });
+    if (width <= 1050) await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Live analysis" }).click();
+    await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
+    assert.equal(await page.locator(".move-list button").count(), 0, `${name} direct navigation should start a new board`);
     const boardWidth = await page.locator(".board-wrap").evaluate((board) => board.getBoundingClientRect().width);
-    assert.ok(boardWidth > Math.min(width * .72, 440), `${name} board is too narrow: ${boardWidth}px`);
+    assert.ok(boardWidth > (width <= 1050 ? Math.min(width * .72, 440) : 300), `${name} board is too narrow: ${boardWidth}px`);
     await page.close();
     console.log(`${name}: Stockfish analysis ready; board ${Math.round(boardWidth)}px`);
   }
