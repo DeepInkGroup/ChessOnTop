@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "prepare:data": "node scripts/prepare-openings.mjs",
     "test:data": "node scripts/validate-openings.mjs",
-    "test:ui": "node scripts/smoke-ui.mjs"
+    "test:ui": "node scripts/smoke-ui.mjs",
+    "test:export": "node scripts/export-check.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",

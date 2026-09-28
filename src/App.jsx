@@ -417,6 +417,11 @@ const PRACTICE_STYLES = [
   { id: "recall", title: "Recall drill", detail: "No move dots. Trust your memory", icon: Zap },
   { id: "challenge", title: "Challenge run", detail: "No hints. Count every miss", icon: Timer },
 ];
+const PRACTICE_CHECKPOINTS = [
+  { id: "start", label: "Opening", detail: "Play the full line", fraction: 0 },
+  { id: "middle", label: "Middle", detail: "Pick up halfway through", fraction: 0.5 },
+  { id: "finish", label: "Final stretch", detail: "Recall the last moves", fraction: 0.85 },
+];
 const BOARD_THEMES = [
   { id: "moss", label: "Moss", detail: "Soft tournament green" },
   { id: "wood", label: "Walnut", detail: "Warm classic board" },
@@ -506,6 +511,96 @@ function makeGame(moves) {
     }
   }
   return game;
+}
+
+const POSITION_EXPORT_COLORS = {
+  moss: ["#e9eddd", "#829c7a"],
+  wood: ["#f1dfbf", "#b47b58"],
+  slate: ["#dce4e5", "#617c80"],
+  ocean: ["#dcebec", "#4f8792"],
+  sand: ["#f1ead8", "#c09b68"],
+};
+const openingFileName = (opening) => `${opening.eco}-${opening.name}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+
+function loadPositionPiece(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("A chess piece image could not be loaded."));
+    image.src = source;
+  });
+}
+
+function canvasTextLines(context, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+  const words = text.split(/\s+/);
+  let line = "";
+  let lines = 0;
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && context.measureText(candidate).width > maxWidth && lines < maxLines - 1) {
+      context.fillText(line, x, y + lines * lineHeight);
+      lines += 1;
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) context.fillText(line, x, y + lines * lineHeight, maxWidth);
+  return lines + 1;
+}
+
+async function renderOpeningPosition(opening, orientation, theme) {
+  const finalGame = makeGame(opening.moves);
+  const pieceNames = [...new Set(finalGame.board().flat().filter(Boolean).map((piece) => `${piece.color}${pieceCode[piece.type]}`))];
+  const pieceImages = Object.fromEntries(await Promise.all(pieceNames.map(async (name) => [name, await loadPositionPiece(pieceAsset(name))])));
+  const canvas = document.createElement("canvas");
+  canvas.width = 1400;
+  canvas.height = 1800;
+  const context = canvas.getContext("2d");
+  const boardX = 100;
+  const boardY = 315;
+  const boardSize = 1200;
+  const squareSize = boardSize / 8;
+  const [light, dark] = POSITION_EXPORT_COLORS[theme] || POSITION_EXPORT_COLORS.moss;
+  context.fillStyle = "#fbfcf8";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#315b42";
+  context.font = "bold 25px Arial, sans-serif";
+  context.fillText("CO.T / CHESSON.TOP  ·  OPENING POSITION", boardX, 76);
+  context.fillStyle = "#273f30";
+  context.font = "normal 56px Georgia, serif";
+  const titleLines = canvasTextLines(context, opening.name, boardX, 145, boardSize, 61, 2);
+  context.fillStyle = "#789078";
+  context.font = "28px Arial, sans-serif";
+  context.fillText(`${opening.eco}  ·  ${opening.moves.length} plies  ·  ${orientation === "w" ? "White" : "Black"} at bottom`, boardX, titleLines === 2 ? 285 : 225);
+  const orderedFiles = orientation === "w" ? files : [...files].reverse();
+  const ranks = orientation === "w" ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
+  for (let row = 0; row < 8; row += 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const file = orderedFiles[col];
+      const rank = ranks[row];
+      const x = boardX + col * squareSize;
+      const y = boardY + row * squareSize;
+      const isLight = (files.indexOf(file) + rank) % 2 === 0;
+      context.fillStyle = isLight ? light : dark;
+      context.fillRect(x, y, squareSize, squareSize);
+      context.fillStyle = isLight ? "#5d7959" : "#f5f7ed";
+      context.font = "bold 22px Arial, sans-serif";
+      if (col === 0) context.fillText(String(rank), x + 10, y + 27);
+      if (row === 7) context.fillText(file, x + squareSize - 27, y + squareSize - 10);
+      const piece = finalGame.get(`${file}${rank}`);
+      if (piece) context.drawImage(pieceImages[`${piece.color}${pieceCode[piece.type]}`], x + 5, y + 5, squareSize - 10, squareSize - 10);
+    }
+  }
+  context.fillStyle = "#315b42";
+  context.font = "bold 30px Arial, sans-serif";
+  context.fillText("FINAL POSITION", boardX, 1580);
+  context.fillStyle = "#6c806f";
+  context.font = "26px Arial, sans-serif";
+  context.fillText(`${finalGame.turn() === "w" ? "White" : "Black"} to move after the final move`, boardX, 1622);
+  context.font = "22px Arial, sans-serif";
+  canvasTextLines(context, `Moves: ${opening.pgn}`, boardX, 1680, boardSize, 29, 3);
+  return canvas;
 }
 
 const escapeHtml = (value = "") => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -968,6 +1063,9 @@ function App() {
   const [activeVisionLesson, setActiveVisionLesson] = useState(null);
   const [basicsDrill, setBasicsDrill] = useState({ index: 0, choice: null, score: 0, streak: 0, bestStreak: 0, answered: 0, started: false, secondsLeft: 180, complete: false });
   const [selectedId, setSelectedId] = useState(DEFAULT_OPENING.id);
+  const [exportOrientation, setExportOrientation] = useState("w");
+  const [positionExportBusy, setPositionExportBusy] = useState(false);
+  const [positionExportMessage, setPositionExportMessage] = useState("");
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
   const [freeMoves, setFreeMoves] = useState([]);
@@ -979,6 +1077,7 @@ function App() {
   const [practicePly, setPracticePly] = useState(0);
   const [practiceSide, setPracticeSide] = useState("w");
   const [practiceStyle, setPracticeStyle] = useState("guided");
+  const [practiceCheckpoint, setPracticeCheckpoint] = useState("start");
   const [practiceMistakes, setPracticeMistakes] = useState(0);
   const [practiceFeedback, setPracticeFeedback] = useState("");
   const [showHint, setShowHint] = useState(false);
@@ -1059,6 +1158,7 @@ function App() {
   }, [basicsDrill.started, basicsDrill.complete, basicsDrill.secondsLeft]);
 
   const opening = OPENING_BY_ID.get(selectedId) || DEFAULT_OPENING;
+  const finalOpeningGame = useMemo(() => makeGame(opening.moves), [opening]);
   const notes = familyNotes.find((note) =>
     opening.family.startsWith(note.match),
   ) || {
@@ -1149,8 +1249,8 @@ function App() {
       return;
     }
     if (practicePly >= opening.moves.length) {
-      setPracticeFeedback("Line complete! Nicely played.");
-      setCompleted((current) =>
+      setPracticeFeedback(practiceCheckpoint === "start" ? "Line complete! Nicely played." : "Checkpoint complete. Try the full line to master it.");
+      if (practiceCheckpoint === "start") setCompleted((current) =>
         current.includes(opening.id) ? current : [...current, opening.id],
       );
       return;
@@ -1168,6 +1268,7 @@ function App() {
     practicePly,
     practiceSide,
     practiceFree,
+    practiceCheckpoint,
     opening,
     availablePracticeMoves,
     setCompleted,
@@ -1220,6 +1321,7 @@ function App() {
     setFreeMoves([]);
     setPlayMoves([]);
     setPracticePly(0);
+    setPracticeCheckpoint("start");
     setPracticeMoves([]);
     setPracticeFree(false);
     setPracticeMistakes(0);
@@ -1253,6 +1355,7 @@ function App() {
     if (next === "practice") {
       setMode("practice");
       setPracticePly(0);
+      setPracticeCheckpoint("start");
       setPracticeMoves([]);
       setPracticeFree(false);
       setPracticeFeedback("");
@@ -1523,6 +1626,20 @@ function App() {
     setNewBook({ title: "", author: "", focus: "", level: "Intermediate", image: "", content: "", releaseAt: "" });
   }
 
+  function startPracticeCheckpoint(id, side = practiceSide) {
+    const checkpoint = PRACTICE_CHECKPOINTS.find((item) => item.id === id) || PRACTICE_CHECKPOINTS[0];
+    const playerMoves = opening.moves.map((_, index) => index).filter((index) => index % 2 === (side === "w" ? 0 : 1));
+    const target = playerMoves[Math.floor((playerMoves.length - 1) * checkpoint.fraction)] || 0;
+    setPracticeCheckpoint(checkpoint.id);
+    setPracticePly(target);
+    setPracticeMoves(opening.moves.slice(0, target));
+    setPracticeFree(false);
+    setPracticeMistakes(0);
+    setPracticeFeedback("");
+    setShowHint(false);
+    setSelectedSquare(null);
+  }
+
   function practicePgn() {
     return mode === "practice" ? game.pgn() : opening.pgn;
   }
@@ -1533,6 +1650,40 @@ function App() {
     link.download = `${opening.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "practice-line"}.pgn`;
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+
+  async function exportOpeningPosition(format) {
+    const printWindow = format === "pdf" ? window.open("", "_blank", "width=900,height=1000") : null;
+    if (format === "pdf" && !printWindow) {
+      setPositionExportMessage("Allow popups to save the PDF.");
+      return;
+    }
+    setPositionExportBusy(true);
+    setPositionExportMessage("");
+    try {
+      const canvas = await renderOpeningPosition(opening, exportOrientation, boardTheme);
+      if (format === "png") {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("The PNG could not be created.");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${openingFileName(opening)}-final-position.png`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+        setPositionExportMessage("PNG downloaded.");
+      } else {
+        const title = escapeHtml(`${opening.name} · Final position`);
+        printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4 portrait;margin:9mm}html,body{margin:0;background:#fff}img{display:block;width:100%;height:auto;max-height:calc(297mm - 18mm);object-fit:contain}@media screen{body{display:grid;place-items:center;min-height:100vh;background:#e7ece5}img{max-width:720px;box-shadow:0 10px 38px #203a2a30}}</style></head><body><img src="${canvas.toDataURL("image/png")}" alt="Chess opening final position"><script>window.onload=()=>{const image=document.querySelector('img');if(image.complete)window.print();else image.onload=()=>window.print()}</script></body></html>`);
+        printWindow.document.close();
+        setPositionExportMessage("Choose Save as PDF in the print dialog.");
+      }
+    } catch (error) {
+      printWindow?.close();
+      setPositionExportMessage(error.message || "The final position could not be exported.");
+    } finally {
+      setPositionExportBusy(false);
+    }
   }
 
   function printPracticePdf() {
@@ -2430,6 +2581,18 @@ function App() {
                     }}><Sparkles size={16} /> Surprise me</button>
                   </section>
                 )}
+                {view === "openings" && <section className="opening-position-export" id="opening-position-export">
+                  <div className="opening-position-preview"><Board game={finalOpeningGame} orientation={exportOrientation} compact theme={boardTheme} showLegalMoves={false} showLastMove={false} showCoordinates={true} /></div>
+                  <div className="opening-position-copy">
+                    <span className="eyebrow dark">FINAL POSITION STUDIO</span>
+                    <h2>Take the position with you.</h2>
+                    <p>Select any opening below to preview its last position, then save a board image or a printable study page.</p>
+                    <div className="opening-position-selected"><strong>{opening.name}</strong><span>{opening.eco} · {opening.moves.length} plies · {finalOpeningGame.turn() === "w" ? "White" : "Black"} to move</span></div>
+                    <div className="opening-position-options" aria-label="Export board orientation">{[["w", "White at bottom"], ["b", "Black at bottom"]].map(([side, label]) => <button key={side} className={exportOrientation === side ? "active" : ""} onClick={() => setExportOrientation(side)}>{label}</button>)}</div>
+                    <div className="opening-position-actions"><button onClick={() => exportOpeningPosition("png")} disabled={positionExportBusy}><Download size={15} /> {positionExportBusy ? "Preparing…" : "Download PNG"}</button><button onClick={() => exportOpeningPosition("pdf")} disabled={positionExportBusy}><Printer size={15} /> Save PDF</button></div>
+                    {positionExportMessage && <small className="opening-position-message" role="status">{positionExportMessage}</small>}
+                  </div>
+                </section>}
                 {view === "practice" && (
                   <><div className="practice-callout">
                     <span className="practice-callout-icon">
@@ -2448,13 +2611,7 @@ function App() {
                     {PRACTICE_STYLES.map(({ id, title: styleTitle, detail, icon: StyleIcon }) => (
                       <button key={id} className={practiceStyle === id ? "active" : ""} onClick={() => {
                         setPracticeStyle(id);
-                        setPracticePly(0);
-                        setPracticeMoves([]);
-                        setPracticeFree(false);
-                        setPracticeMistakes(0);
-                        setPracticeFeedback("");
-                        setShowHint(false);
-                        setSelectedSquare(null);
+                        startPracticeCheckpoint("start");
                       }}>
                         <span><StyleIcon size={18} /></span>
                         <strong>{styleTitle}</strong>
@@ -2462,7 +2619,11 @@ function App() {
                         {practiceStyle === id && <Check size={15} className="practice-style-check" />}
                       </button>
                     ))}
-                  </div></>
+                  </div>
+                  <section className="practice-checkpoints">
+                    <div><span className="eyebrow dark">NEW · JUMP-IN PRACTICE</span><h3>Train the move you tend to forget.</h3><p>Start at the beginning, middle, or final stretch of the selected line. The board sets up the position for you.</p></div>
+                    <div className="practice-checkpoint-options">{PRACTICE_CHECKPOINTS.map((checkpoint) => <button key={checkpoint.id} className={practiceCheckpoint === checkpoint.id ? "active" : ""} onClick={() => startPracticeCheckpoint(checkpoint.id)}><strong>{checkpoint.label}</strong><small>{checkpoint.detail}</small></button>)}</div>
+                  </section></>
                 )}
                 {view === "collection" && (
                   <><div className="collection-tabs">
@@ -2902,12 +3063,7 @@ function App() {
                     className={practiceSide === "w" ? "active" : ""}
                     onClick={() => {
                       setPracticeSide("w");
-                      setPracticePly(0);
-                      setPracticeMoves([]);
-                      setPracticeFree(false);
-                      setPracticeMistakes(0);
-                      setPracticeFeedback("");
-                      setShowHint(false);
+                      startPracticeCheckpoint("start", "w");
                     }}
                   >
                     White
@@ -2916,12 +3072,7 @@ function App() {
                     className={practiceSide === "b" ? "active" : ""}
                     onClick={() => {
                       setPracticeSide("b");
-                      setPracticePly(0);
-                      setPracticeMoves([]);
-                      setPracticeFree(false);
-                      setPracticeMistakes(0);
-                      setPracticeFeedback("");
-                      setShowHint(false);
+                      startPracticeCheckpoint("start", "b");
                     }}
                   >
                     Black
@@ -2932,14 +3083,7 @@ function App() {
                     <Lightbulb size={16} /> Hint
                   </button>
                   <button
-                    onClick={() => {
-                      setPracticePly(0);
-                      setPracticeMoves([]);
-                      setPracticeFree(false);
-                      setPracticeMistakes(0);
-                      setPracticeFeedback("");
-                      setShowHint(false);
-                    }}
+                    onClick={() => startPracticeCheckpoint(practiceCheckpoint)}
                   >
                     <RotateCcw size={16} /> Restart
                   </button>
@@ -3052,7 +3196,7 @@ function App() {
                   (practiceFree
                     ? recognizedOpening ? `You are playing ${recognizedOpening.name}.` : "Play any legal move. The opening name will update when recognized."
                     : practicePly >= opening.moves.length
-                    ? "Line complete!"
+                    ? practiceCheckpoint === "start" ? "Line complete!" : "Checkpoint complete. Try the full line to master it."
                     : showHint
                       ? `Find ${opening.moves[practicePly] || "the next move"} on the board.`
                       : practicePly % 2 === (practiceSide === "w" ? 0 : 1)
