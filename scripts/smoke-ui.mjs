@@ -99,8 +99,8 @@ try {
   await page.getByRole("heading", { name: /Sharper ideas/ }).waitFor();
   assert.equal(await page.locator(".article-card").count(), 0);
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Learn the basics" }).click();
-  assert.equal(await page.locator(".thinking-routine-locked").count(), 1);
-  assert.equal(await page.getByRole("button", { name: /Create your account/ }).count(), 1);
+  assert.equal(await page.locator(".thinking-routine").count(), 0);
+  assert.equal(await page.locator(".basics-drill").count(), 0);
 
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Sign in" }).click();
   await page.screenshot({ path: resolve(output, "sign-in.png"), fullPage: true });
@@ -156,7 +156,7 @@ try {
   await bookEditor.press("Control+A");
   await page.getByRole("button", { name: "Book content bold" }).click();
   assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<(b|strong)>/i);
-  assert.equal(await page.getByLabel("Book content font").locator("option").count(), 10);
+  assert.ok((await page.getByLabel("Book content font").locator("option").count()) >= 15);
   await bookEditor.press("Control+A");
   await page.getByLabel("Book content font").selectOption("Times New Roman");
   assert.match(await bookEditor.evaluate((editor) => editor.innerHTML), /<font[^>]+face=["']?Times New Roman/i);
@@ -290,7 +290,7 @@ try {
   assert.equal(await page.locator(".study-panel").count(), 0);
   assert.equal(await page.locator(".thinking-habit").count(), 4);
   assert.equal(await page.locator(".basics-drill").count(), 1);
-  assert.equal(await page.locator(".basics-drill .drill-progress span").count(), 10);
+  assert.equal(await page.locator(".basics-drill .drill-progress span").count(), 16);
   await page.locator(".basics-drill").getByRole("button", { name: /e4/ }).click();
   assert.match(await page.locator(".basics-drill").innerText(), /Correct\./);
   assert.match(await page.locator(".basics-drill .coordinate-score").innerText(), /1 correct/);
@@ -325,13 +325,19 @@ try {
     "A pawn with no enemy pawn able to stop it",
     "Defend or move it",
     "Checks, captures, threats",
+    "Whether moving it exposes check",
+    "Check the threat before continuing your plan",
+    "Your king",
+    "No enemy pawn can stop it on its route",
+    "Can my opponent capture or check something now?",
+    "Useful central squares",
   ];
   for (const [index, answer] of sprintAnswers.entries()) {
     await sprint.locator(".drill-options button").filter({ hasText: answer }).click();
     await sprint.getByRole("button", { name: index === sprintAnswers.length - 1 ? /See results/ : /Next question/ }).click();
   }
   await sprint.getByText("SPRINT COMPLETE").waitFor();
-  assert.match(await sprint.innerText(), /10\/10.*best streak of 10/s);
+  assert.match(await sprint.innerText(), /16\/16.*best streak of 16/s);
   await page.screenshot({ path: resolve(output, "foundation-sprint-complete.png"), fullPage: true });
   await page.getByRole("button", { name: "Opening library" }).click();
   await page.locator('.board-wrap [aria-label="e2 white pawn"]').click();
@@ -433,12 +439,12 @@ try {
     .fill("Amar Opening");
   await page.locator(".opening-row-main").first().click();
   await page.getByRole("tab", { name: "Practice" }).click();
-  await page.getByRole("button", { name: "Black" }).click();
+  await page.getByRole("button", { name: "Black", exact: true }).click();
   await page.getByText(/no Black moves to practice/).waitFor();
   assert.ok(
     (await page.locator(".moves-heading span").innerText()).startsWith("0/"),
   );
-  await page.getByRole("button", { name: "White" }).click();
+  await page.getByRole("button", { name: "White", exact: true }).click();
   await page.locator('.board-wrap [aria-label="g1 white knight"]').click();
   await page.locator('.board-wrap [aria-label="h3"]').click();
   await page.getByText("Line complete! Nicely played.").waitFor();

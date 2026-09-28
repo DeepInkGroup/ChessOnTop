@@ -1,5 +1,6 @@
 node_modules/
 dist/
+public/engine/
 artifacts/
 .vite/
 dev-server*.log

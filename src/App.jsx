@@ -61,6 +61,8 @@ import openingsC from "./data/openings-c.json";
 import openingsD from "./data/openings-d.json";
 import openingsE from "./data/openings-e.json";
 import { createOpeningBook, gameResult, pickComputerMove } from "./play";
+import { analyzePracticeMoves } from "./analysisEngine";
+import EngineReport from "./EngineReport";
 
 const rawOpenings = [
   ...openingsA,
@@ -1075,11 +1077,17 @@ function App() {
   const [playSide, setPlaySide] = useState("w");
   const [difficulty, setDifficulty] = useState("focused");
   const [practicePly, setPracticePly] = useState(0);
+  const [practiceSeedPly, setPracticeSeedPly] = useState(0);
   const [practiceSide, setPracticeSide] = useState("w");
   const [practiceStyle, setPracticeStyle] = useState("guided");
   const [practiceCheckpoint, setPracticeCheckpoint] = useState("start");
   const [practiceMistakes, setPracticeMistakes] = useState(0);
   const [practiceFeedback, setPracticeFeedback] = useState("");
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisState, setAnalysisState] = useState({ status: "idle", progress: { done: 0, total: 0 }, rows: [], result: null, error: "" });
+  const [selectedAnalysisMove, setSelectedAnalysisMove] = useState(0);
+  const analysisAbortRef = useRef(null);
+  const analysisRunRef = useRef(0);
   const [showHint, setShowHint] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [orientation, setOrientation] = useState("w");
@@ -1191,6 +1199,7 @@ function App() {
   const availablePracticeMoves = opening.moves.filter(
     (_, index) => index % 2 === (practiceSide === "w" ? 0 : 1),
   ).length;
+  const hasPlayedPracticeMove = practiceMoves.some((_, index) => index >= practiceSeedPly && index % 2 === (practiceSide === "w" ? 0 : 1));
   const playResult = mode === "play" ? gameResult(game, playSide) : null;
   const computerThinking = mode === "play" && !playResult && game.turn() !== playSide;
 
@@ -1313,6 +1322,18 @@ function App() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [boardFocus]);
+  useEffect(() => {
+    if (!analysisOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleEscape = (event) => event.key === "Escape" && closeEngineAnalysis();
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [analysisOpen]);
+  useEffect(() => () => analysisAbortRef.current?.abort(), []);
 
   function resetForOpening(item) {
     if (view === "collection") setCollectionOpeningChosen(true);
@@ -1321,6 +1342,7 @@ function App() {
     setFreeMoves([]);
     setPlayMoves([]);
     setPracticePly(0);
+    setPracticeSeedPly(0);
     setPracticeCheckpoint("start");
     setPracticeMoves([]);
     setPracticeFree(false);
@@ -1355,6 +1377,7 @@ function App() {
     if (next === "practice") {
       setMode("practice");
       setPracticePly(0);
+      setPracticeSeedPly(0);
       setPracticeCheckpoint("start");
       setPracticeMoves([]);
       setPracticeFree(false);
@@ -1389,6 +1412,7 @@ function App() {
     setShowHint(false);
     if (next === "practice") {
       setPracticePly(0);
+      setPracticeSeedPly(0);
       setPracticeMoves([]);
       setPracticeFree(false);
     }
@@ -1632,12 +1656,48 @@ function App() {
     const target = playerMoves[Math.floor((playerMoves.length - 1) * checkpoint.fraction)] || 0;
     setPracticeCheckpoint(checkpoint.id);
     setPracticePly(target);
+    setPracticeSeedPly(target);
     setPracticeMoves(opening.moves.slice(0, target));
     setPracticeFree(false);
     setPracticeMistakes(0);
     setPracticeFeedback("");
     setShowHint(false);
     setSelectedSquare(null);
+  }
+
+  function closeEngineAnalysis() {
+    analysisAbortRef.current?.abort();
+    setAnalysisOpen(false);
+  }
+
+  function cancelEngineAnalysis() {
+    analysisAbortRef.current?.abort();
+  }
+
+  function runEngineAnalysis() {
+    const moves = practiceMoves.slice(practiceSeedPly);
+    if (!hasPlayedPracticeMove || !moves.length) return;
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    const runId = ++analysisRunRef.current;
+    const initialFen = makeGame(practiceMoves.slice(0, practiceSeedPly)).fen();
+    analysisAbortRef.current = controller;
+    setSelectedAnalysisMove(0);
+    setAnalysisOpen(true);
+    setAnalysisState({ status: "running", progress: { done: 0, total: moves.length }, rows: [], result: null, error: "" });
+    analyzePracticeMoves(moves, practiceSide, controller.signal, (progress) => {
+      if (analysisRunRef.current !== runId) return;
+      setAnalysisState((current) => ({ ...current, progress, rows: progress.rows }));
+    }, initialFen, practiceSeedPly).then((result) => {
+      if (analysisRunRef.current !== runId) return;
+      setSelectedAnalysisMove(result.biggestMiss ? result.rows.indexOf(result.biggestMiss) : 0);
+      setAnalysisState({ status: "ready", progress: { done: moves.length, total: moves.length }, rows: result.rows, result, error: "" });
+    }).catch((error) => {
+      if (analysisRunRef.current !== runId) return;
+      setAnalysisState((current) => ({ ...current, status: controller.signal.aborted ? "cancelled" : "error", error: controller.signal.aborted ? "" : error.message }));
+    }).finally(() => {
+      if (analysisRunRef.current === runId) analysisAbortRef.current = null;
+    });
   }
 
   function practicePgn() {
@@ -1854,7 +1914,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
+    <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${view === "practice" ? "practice-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div
           className="brand"
@@ -2644,7 +2704,7 @@ function App() {
                   </div>{filteredOpenings.length > 0 && !collectionOpeningChosen && <div className="repertoire-board-prompt"><span><Target size={18} /></span><div><strong>Choose a line when you are ready to study.</strong><p>The board will open after you select an opening from your repertoire.</p></div><ArrowRight size={18} /></div>}</>
                 )}
                 {view !== "collection" && (
-                  <div className="filter-panel">
+                  <div className="filter-panel" id={view === "practice" ? "practice-lines" : undefined}>
                     <div className="filter-title">
                       <div><span>Browse the collection</span><small>{filteredOpenings.length.toLocaleString()} matching lines</small></div>
                       <label className="opening-sort">Sort by<select aria-label="Sort openings" value={openingSort} onChange={(event) => setOpeningSort(event.target.value)}><option value="recommended">Recommended</option><option value="name">Name A–Z</option><option value="shortest">Shortest first</option><option value="deepest">Deepest first</option></select></label>
@@ -2894,6 +2954,7 @@ function App() {
                 </p>
               </div>
             </div>
+            {view === "practice" && <button className="practice-line-picker" onClick={() => document.getElementById("practice-lines")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Choose a different opening <ArrowRight size={14} /></button>}
             <PlayerRail
               color={orientation === "w" ? "b" : "w"}
               active={game.turn() === (orientation === "w" ? "b" : "w")}
@@ -3093,6 +3154,7 @@ function App() {
                   <button onClick={downloadPracticePgn}><Download size={14} /> Export PGN</button>
                   <button onClick={printPracticePdf}><Printer size={14} /> Save as PDF</button>
                 </div>
+                <div className="practice-engine-launch"><span><Zap size={17} /> ENGINE REVIEW</span><strong>See the story behind your moves.</strong><p>Get an evaluation chart, move quality, missed ideas, and the engine's preferred line.</p><button onClick={runEngineAnalysis} disabled={!hasPlayedPracticeMove}><Sparkles size={15} /> Analyze with Stockfish <ArrowRight size={14} /></button>{!hasPlayedPracticeMove && <small>Play a move on the board to unlock analysis.</small>}</div>
               </div>
             )}
             {mode === "explore" && (
@@ -3238,6 +3300,7 @@ function App() {
           </aside>}
         </div>
       </div>
+      {analysisOpen && <EngineReport state={analysisState} selected={selectedAnalysisMove} onSelect={setSelectedAnalysisMove} onClose={closeEngineAnalysis} onCancel={cancelEngineAnalysis} onRetry={runEngineAnalysis} openingName={practiceFree ? recognizedOpening?.name || "Free practice" : opening.name} playerSide={practiceSide} />}
       {selectedBook && (
         <div className="reader-overlay" role="dialog" aria-modal="true" aria-label={`Reading ${selectedBook.title}`} onClick={() => setSelectedBook(null)}>
           <article className="reader-page" onClick={(event) => event.stopPropagation()}>

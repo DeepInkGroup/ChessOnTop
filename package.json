@@ -4,19 +4,23 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/prepare-engine.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-engine.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "prepare:data": "node scripts/prepare-openings.mjs",
     "test:data": "node scripts/validate-openings.mjs",
     "test:ui": "node scripts/smoke-ui.mjs",
+    "test:engine": "node scripts/engine-check.mjs",
     "test:export": "node scripts/export-check.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "stockfish": "^19.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
