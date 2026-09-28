@@ -1,11 +1,14 @@
 import { useId } from "react";
 
 const qualityColors = {
+  Brilliant: "#54b4af",
+  Great: "#6495c9",
   Best: "#4b9365",
-  Strong: "#79aa6c",
-  Solid: "#b0c883",
+  Excellent: "#79aa6c",
+  Good: "#b0c883",
   Inaccuracy: "#edbd67",
   Mistake: "#dc8b62",
+  Miss: "#d97887",
   Blunder: "#ca655f",
 };
 

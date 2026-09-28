@@ -62,7 +62,7 @@ import openingsC from "./data/openings-c.json";
 import openingsD from "./data/openings-d.json";
 import openingsE from "./data/openings-e.json";
 import { createOpeningBook, gameResult, pickComputerMove } from "./play";
-import { analyzePosition, analyzePracticeMoves } from "./analysisEngine";
+import { analyzePosition, analyzePracticeMoves, DEFAULT_ENGINE_SETTINGS } from "./analysisEngine";
 import EngineReport from "./EngineReport";
 import LiveAnalysisPage from "./LiveAnalysisPage";
 
@@ -1073,6 +1073,7 @@ function App() {
   const [mode, setMode] = useState("learn");
   const [ply, setPly] = useState(Math.min(6, DEFAULT_OPENING.moves.length));
   const [freeMoves, setFreeMoves] = useState([]);
+  const [analysisPly, setAnalysisPly] = useState(null);
   const [playMoves, setPlayMoves] = useState([]);
   const [practiceMoves, setPracticeMoves] = useState([]);
   const [practiceFree, setPracticeFree] = useState(false);
@@ -1093,6 +1094,9 @@ function App() {
   const [liveAnalysis, setLiveAnalysis] = useState({ status: "idle", data: null, error: "" });
   const [liveHistory, setLiveHistory] = useState([]);
   const [liveHistoryProgress, setLiveHistoryProgress] = useState(null);
+  const [liveReview, setLiveReview] = useState({ status: "idle", result: null, error: "", moveCount: 0 });
+  const [engineSettings, setEngineSettings] = useStoredValue("cot-engine-settings", DEFAULT_ENGINE_SETTINGS);
+  const [manualAnalysisRequest, setManualAnalysisRequest] = useState(null);
   const liveBackfillRef = useRef(null);
   const [showHint, setShowHint] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState(null);
@@ -1185,13 +1189,13 @@ function App() {
   };
   const lesson = BASICS_LESSONS[activeLesson];
   const drill = BASICS_DRILLS[basicsDrill.index];
-  const displayedMoves =
+    const displayedMoves =
     mode === "play"
       ? playMoves
       : mode === "practice"
       ? practiceMoves
       : mode === "explore"
-      ? freeMoves
+      ? view === "analysis" && analysisPly !== null ? freeMoves.slice(0, analysisPly) : freeMoves
       : opening.moves.slice(0, ply);
   const game = useMemo(
     () => makeGame(displayedMoves),
@@ -1200,26 +1204,38 @@ function App() {
   const liveFen = view === "analysis" ? game.fen() : null;
   useEffect(() => {
     if (!liveFen) return;
+    if (engineSettings.auto === false && manualAnalysisRequest?.fen !== liveFen) {
+      setLiveAnalysis((current) => ({ status: "paused", data: current.data?.fen === liveFen ? current.data : null, error: "" }));
+      return;
+    }
     const controller = new AbortController();
-    const currentPly = freeMoves.length;
-    const label = currentPly ? `${Math.ceil(currentPly / 2)}${currentPly % 2 ? "." : "..."} ${freeMoves.at(-1)}` : "Start";
+    const currentPly = displayedMoves.length;
+    const label = currentPly ? `${Math.ceil(currentPly / 2)}${currentPly % 2 ? "." : "..."} ${displayedMoves.at(-1)}` : "Start";
     setLiveAnalysis({ status: "running", data: null, error: "" });
     const timer = setTimeout(() => {
-      analyzePosition(liveFen, controller.signal).then((data) => {
+      analyzePosition(liveFen, controller.signal, engineSettings).then((data) => {
         if (controller.signal.aborted) return;
         setLiveAnalysis({ status: "ready", data, error: "" });
-        setLiveHistory((current) => [...current.filter((point) => point.ply < currentPly), { ply: currentPly, label, score: data.score.whiteCp, material: data.material }]);
+        if (analysisPly === null) setLiveHistory((current) => [...current.filter((point) => point.ply < currentPly), { ply: currentPly, label, score: data.score.whiteCp, material: data.material }]);
       }).catch((error) => {
         if (!controller.signal.aborted) setLiveAnalysis({ status: "error", data: null, error: error.message });
       });
     }, 120);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [liveFen]);
+  }, [liveFen, engineSettings.depth, engineSettings.movetime, engineSettings.multiPv, engineSettings.hash, engineSettings.auto, manualAnalysisRequest?.id]);
   const recognizedOpening =
     mode === "explore" || mode === "play" || (mode === "practice" && practiceFree)
       ? OPENING_BY_LINE.get(displayedMoves.join(" ")) ||
         OPENING_BY_POSITION.get(game.fen().split(" ").slice(0, 4).join(" "))
       : null;
+  const analysisOpening = useMemo(() => {
+    if (view !== "analysis") return null;
+    for (let count = Math.min(displayedMoves.length, 24); count > 0; count -= 1) {
+      const match = OPENING_BY_LINE.get(displayedMoves.slice(0, count).join(" "));
+      if (match) return match;
+    }
+    return null;
+  }, [view, displayedMoves.join(" ")]);
   const availablePracticeMoves = opening.moves.filter(
     (_, index) => index % 2 === (practiceSide === "w" ? 0 : 1),
   ).length;
@@ -1413,9 +1429,12 @@ function App() {
     if (next === "analysis") {
       setMode("explore");
       setFreeMoves([]);
+      setAnalysisPly(null);
       setLiveAnalysis({ status: "idle", data: null, error: "" });
       setLiveHistory([]);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
       setLiveHistoryProgress(null);
+      setManualAnalysisRequest(null);
       setSelectedSquare(null);
       setBoardArrows([]);
     } else {
@@ -1499,6 +1518,8 @@ function App() {
     if (view === "analysis") {
       liveBackfillRef.current?.abort();
       setLiveHistoryProgress(null);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
+      setAnalysisPly(null);
     }
     if (mode === "practice") {
       if (practiceFree) {
@@ -1525,7 +1546,7 @@ function App() {
       setMode("explore");
       setPracticeFeedback("");
     } else {
-      setFreeMoves((current) => [...current, move.san]);
+      setFreeMoves((current) => [...(view === "analysis" && analysisPly !== null ? current.slice(0, analysisPly) : current), move.san]);
     }
   }
 
@@ -1731,7 +1752,7 @@ function App() {
     analyzePracticeMoves(moves, practiceSide, controller.signal, (progress) => {
       if (analysisRunRef.current !== runId) return;
       setAnalysisState((current) => ({ ...current, progress, rows: progress.rows }));
-    }, initialFen, practiceSeedPly).then((result) => {
+    }, initialFen, practiceSeedPly, { ...engineSettings, movetime: engineSettings.reviewTime || DEFAULT_ENGINE_SETTINGS.reviewTime }).then((result) => {
       if (analysisRunRef.current !== runId) return;
       setSelectedAnalysisMove(result.biggestMiss ? result.rows.indexOf(result.biggestMiss) : 0);
       setAnalysisState({ status: "ready", progress: { done: moves.length, total: moves.length }, rows: result.rows, result, error: "" });
@@ -1747,6 +1768,7 @@ function App() {
     closeEngineAnalysis();
     chooseView("analysis");
     setFreeMoves([...practiceMoves]);
+    setAnalysisPly(null);
     setOrientation(practiceSide);
     backfillLiveHistory(practiceMoves);
   }
@@ -1757,16 +1779,23 @@ function App() {
     const controller = new AbortController();
     liveBackfillRef.current = controller;
     setLiveHistoryProgress({ done: 0, total: moves.length });
+    setLiveReview({ status: "running", result: null, error: "", moveCount: moves.length });
     const timer = setTimeout(() => {
       if (controller.signal.aborted) return;
       analyzePracticeMoves(moves, "w", controller.signal, ({ done, total, rows }) => {
         if (controller.signal.aborted) return;
         setLiveHistoryProgress({ done, total });
         if (rows.length) setLiveHistory([{ ply: 0, label: "Start", score: rows[0].beforeScore.whiteCp, material: 0 }, ...rows.map((row, index) => ({ ply: index + 1, label: `${Math.floor(index / 2) + 1}${row.color === "w" ? "." : "..."} ${row.san}`, score: row.afterScore.whiteCp, material: row.material }))]);
-      }).then(() => {
-        if (!controller.signal.aborted) setLiveHistoryProgress(null);
+      }, undefined, 0, { ...engineSettings, movetime: engineSettings.reviewTime || DEFAULT_ENGINE_SETTINGS.reviewTime }).then((result) => {
+        if (!controller.signal.aborted) {
+          setLiveHistoryProgress(null);
+          setLiveReview({ status: "ready", result, error: "", moveCount: moves.length });
+        }
       }).catch((error) => {
-        if (!controller.signal.aborted) setLiveHistoryProgress({ error: error.message, done: 0, total: moves.length });
+        if (!controller.signal.aborted) {
+          setLiveHistoryProgress({ error: error.message, done: 0, total: moves.length });
+          setLiveReview({ status: "error", result: null, error: error.message, moveCount: moves.length });
+        }
       });
     }, 1000);
     controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
@@ -1782,6 +1811,7 @@ function App() {
       if (!moves.length) return { ok: false, message: "No legal moves were found in that PGN." };
       if (moves.length > 160) return { ok: false, message: "Load a game with 160 moves or fewer for full chart analysis." };
       setFreeMoves(moves);
+      setAnalysisPly(null);
       setLiveHistory([]);
       setSelectedSquare(null);
       setBoardArrows([]);
@@ -1790,6 +1820,21 @@ function App() {
     } catch {
       return { ok: false, message: "The PGN could not be read. Check the move notation and try again." };
     }
+  }
+
+  function updateEngineSetting(name, value) {
+    if (["depth", "reviewTime", "hash"].includes(name)) {
+      liveBackfillRef.current?.abort();
+      setLiveHistoryProgress(null);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
+    }
+    setEngineSettings((current) => ({ ...current, [name]: value }));
+  }
+
+  function selectAnalysisPly(count) {
+    setAnalysisPly(count >= freeMoves.length ? null : Math.max(0, count));
+    setSelectedSquare(null);
+    setBoardArrows([]);
   }
 
   function practicePgn() {
@@ -2004,6 +2049,15 @@ function App() {
   function restartBasicsDrill() {
     setBasicsDrill({ index: 0, choice: null, score: 0, streak: 0, bestStreak: 0, answered: 0, started: false, secondsLeft: 180, complete: false });
   }
+
+  const liveBoard = view === "analysis" ? <section className="live-board-card" aria-label="Live analysis board">
+    <div className="live-board-card-head"><div><span className="eyebrow dark">THE POSITION</span><strong>{analysisOpening?.name || recognizedOpening?.name || "Free analysis"}</strong></div><button aria-label="Enlarge board" title="Enlarge board" onClick={() => setBoardFocus(true)}><Maximize2 size={17}/></button></div>
+    <PlayerRail color={orientation === "w" ? "b" : "w"} active={game.turn() === (orientation === "w" ? "b" : "w")} label={orientation === "w" ? "Black" : "White"} detail={game.turn() === (orientation === "w" ? "b" : "w") ? "To move" : "Waiting"}/>
+    <div className={`board-wrap ${game.isCheckmate() ? "board-wrap-mate" : ""}`}><Board game={game} orientation={orientation} selectedSquare={selectedSquare} onSquareClick={handleSquareClick} onMove={tryMove} interactiveColor={game.turn()} theme={boardTheme} showCoordinates={showBoardCoordinates} showLastMove={showLastMove} arrows={liveAnalysis.data?.fen === game.fen() && liveAnalysis.data.lines[0] ? [...boardArrows, { from: liveAnalysis.data.lines[0].from, to: liveAnalysis.data.lines[0].to, color: "green", weight: "regular" }] : boardArrows} onArrowsChange={setBoardArrows} arrowColor={arrowColor} arrowWeight={arrowWeight}/></div>
+    <PlayerRail color={orientation} active={game.turn() === orientation} label={orientation === "w" ? "White" : "Black"} detail={game.turn() === orientation ? "To move" : "Waiting"}/>
+    <div className="live-board-card-tools"><span><MousePointer2 size={14}/> Drag a piece · right drag for arrows</span><div className="theme-picker" aria-label="Board color">{BOARD_THEMES.map((item) => <button key={item.id} aria-label={`${item.label} board`} className={`${item.id} ${boardTheme === item.id ? "active" : ""}`} onClick={() => setBoardTheme(item.id)}/>)}</div></div>
+    <ArrowControls color={arrowColor} setColor={setArrowColor} weight={arrowWeight} setWeight={setArrowWeight} arrows={boardArrows} setArrows={setBoardArrows}/>
+  </section> : null;
 
   return (
     <div className={`app-shell ${view === "play" && mode === "play" ? "play-mode" : ""} ${view === "practice" ? "practice-mode" : ""} ${view === "analysis" ? "analysis-mode" : ""} ${["overview", "basics", "books", "articles", "account", "admin"].includes(view) || view === "collection" && !collectionOpeningChosen ? "wide-mode" : ""}`}>
@@ -2689,7 +2743,7 @@ function App() {
                 </div>}
               </section>
             )}
-            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} openingName={recognizedOpening?.name} onUndo={() => { liveBackfillRef.current?.abort(); setLiveHistoryProgress(null); setFreeMoves((current) => current.slice(0, -1)); setSelectedSquare(null); setBoardArrows([]); }} onReset={() => { liveBackfillRef.current?.abort(); setLiveHistoryProgress(null); setFreeMoves([]); setLiveHistory([]); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} />}
+            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} currentPly={displayedMoves.length} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} review={liveReview} board={liveBoard} settings={{ ...DEFAULT_ENGINE_SETTINGS, ...engineSettings }} onSettingsChange={updateEngineSetting} onAnalyzeNow={() => setManualAnalysisRequest({ fen: game.fen(), id: Date.now() })} onReviewGame={() => backfillLiveHistory(freeMoves)} openingName={analysisOpening?.name || recognizedOpening?.name} onUndo={() => selectAnalysisPly(Math.max(0, displayedMoves.length - 1))} onReset={() => { liveBackfillRef.current?.abort(); setFreeMoves([]); setAnalysisPly(null); setLiveHistory([]); setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 }); setLiveHistoryProgress(null); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} onSelectPly={selectAnalysisPly} />}
             {view !== "overview" && view !== "basics" && view !== "play" && view !== "analysis" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
               <>
                 <div className="page-heading">
@@ -2950,7 +3004,7 @@ function App() {
             </div>
           </main>
 
-          {!(["overview", "basics", "books", "articles", "account", "admin"].includes(view)) && !(view === "collection" && !collectionOpeningChosen) && <aside className="study-panel" id="study-panel">
+          {!(["overview", "basics", "analysis", "books", "articles", "account", "admin"].includes(view)) && !(view === "collection" && !collectionOpeningChosen) && <aside className="study-panel" id="study-panel">
             <div className="study-top">
               <div>
                 <span className="eyebrow dark">{view === "analysis" ? "LIVE ENGINE BOARD" : "YOUR STUDY SPACE"}</span>

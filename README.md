@@ -10,7 +10,7 @@ Player accounts can be created and signed in locally. Passwords are salted and h
 
 The expand button beside the board opens Focus Board, a large centered playing view that keeps legal moves, board themes, orientation, game state, and practice feedback active.
 
-Practice review uses Stockfish.js to show move quality, evaluation and material charts, phase summaries, and a board snapshot for each move. The Live Analysis page evaluates moves as they are played, shows three engine continuations, and can load a PGN from the standard starting position. Engine searches run in the browser.
+Practice review uses Stockfish.js to show move quality, evaluation and material charts, phase summaries, and a board snapshot for each move. Live Analysis places the playable board in the center, with position evaluation, engine continuations, and adjustable search depth, time, lines, hash memory, and review time. It can load a PGN from the standard starting position and review both sides of the game. The review shows move labels, accuracy, and opening, tactics, strategy, and endgame breakdowns. The displayed game Elo is a sample adjusted training estimate, not an official rating. Move accuracy follows the published [Lichess win chance formula](https://lichess.org/page/accuracy), averaged across each side's moves. Engine searches run in the browser.
 
 ## Run
 
