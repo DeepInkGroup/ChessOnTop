@@ -62,7 +62,7 @@ import openingsC from "./data/openings-c.json";
 import openingsD from "./data/openings-d.json";
 import openingsE from "./data/openings-e.json";
 import { createOpeningBook, gameResult, pickComputerMove } from "./play";
-import { analyzePosition, analyzePracticeMoves, DEFAULT_ENGINE_SETTINGS } from "./analysisEngine";
+import { analyzePosition, analyzePracticeMoves, DEFAULT_ENGINE_SETTINGS, summarizeGame } from "./analysisEngine";
 import EngineReport from "./EngineReport";
 import LiveAnalysisPage from "./LiveAnalysisPage";
 
@@ -1097,7 +1097,10 @@ function App() {
   const [liveReview, setLiveReview] = useState({ status: "idle", result: null, error: "", moveCount: 0 });
   const [engineSettings, setEngineSettings] = useStoredValue("cot-engine-settings", DEFAULT_ENGINE_SETTINGS);
   const [manualAnalysisRequest, setManualAnalysisRequest] = useState(null);
+  const [autoReviewRevision, setAutoReviewRevision] = useState(0);
   const liveBackfillRef = useRef(null);
+  const liveReviewCacheRef = useRef(null);
+  const autoReviewTimerRef = useRef(null);
   const [showHint, setShowHint] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [orientation, setOrientation] = useState("w");
@@ -1224,6 +1227,19 @@ function App() {
     }, 120);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [liveFen, engineSettings.depth, engineSettings.movetime, engineSettings.multiPv, engineSettings.hash, engineSettings.auto, manualAnalysisRequest?.id]);
+  useEffect(() => {
+    clearTimeout(autoReviewTimerRef.current);
+    if (view !== "analysis" || !freeMoves.length || engineSettings.autoReview === false) return;
+    const settingsKey = JSON.stringify([engineSettings.reviewDepth ?? 14, engineSettings.reviewTime ?? 200, engineSettings.reviewLines ?? 2, engineSettings.hash ?? 16]);
+    const cache = liveReviewCacheRef.current;
+    if (cache?.settingsKey === settingsKey && cache.moves.length === freeMoves.length && cache.moves.every((move, index) => move === freeMoves[index])) {
+      setLiveReview((current) => current.status === "ready" ? current : { status: "ready", result: cache.result, error: "", moveCount: freeMoves.length });
+      return;
+    }
+    setLiveReview({ status: "queued", result: null, error: "", moveCount: freeMoves.length });
+    autoReviewTimerRef.current = setTimeout(() => backfillLiveHistory([...freeMoves], { incremental: true }), 850);
+    return () => clearTimeout(autoReviewTimerRef.current);
+  }, [view, freeMoves.join(" "), autoReviewRevision, engineSettings.autoReview, engineSettings.reviewDepth, engineSettings.reviewTime, engineSettings.reviewLines, engineSettings.hash]);
   const recognizedOpening =
     mode === "explore" || mode === "play" || (mode === "practice" && practiceFree)
       ? OPENING_BY_LINE.get(displayedMoves.join(" ")) ||
@@ -1386,7 +1402,7 @@ function App() {
     };
   }, [analysisOpen]);
   useEffect(() => () => analysisAbortRef.current?.abort(), []);
-  useEffect(() => () => liveBackfillRef.current?.abort(), []);
+  useEffect(() => () => { liveBackfillRef.current?.abort(); clearTimeout(autoReviewTimerRef.current); }, []);
 
   function resetForOpening(item) {
     if (view === "collection") setCollectionOpeningChosen(true);
@@ -1439,6 +1455,8 @@ function App() {
       setPracticeMistakes(0);
     }
     if (next === "analysis") {
+      liveBackfillRef.current?.abort();
+      liveReviewCacheRef.current = null;
       setMode("explore");
       setFreeMoves([]);
       setAnalysisPly(null);
@@ -1451,6 +1469,7 @@ function App() {
       setBoardArrows([]);
     } else {
       liveBackfillRef.current?.abort();
+      clearTimeout(autoReviewTimerRef.current);
       setLiveHistoryProgress(null);
     }
     if (next === "basics") {
@@ -1814,35 +1833,46 @@ function App() {
     setFreeMoves([...practiceMoves]);
     setAnalysisPly(null);
     setOrientation(practiceSide);
-    backfillLiveHistory(practiceMoves);
   }
 
-  function backfillLiveHistory(moves) {
+  function backfillLiveHistory(moves, { incremental = false } = {}) {
+    clearTimeout(autoReviewTimerRef.current);
     liveBackfillRef.current?.abort();
     if (!moves.length) return;
     const controller = new AbortController();
     liveBackfillRef.current = controller;
-    setLiveHistoryProgress({ done: 0, total: moves.length });
-    setLiveReview({ status: "running", result: null, error: "", moveCount: moves.length });
-    const timer = setTimeout(() => {
+    const reviewOptions = { ...DEFAULT_ENGINE_SETTINGS, ...engineSettings, movetime: engineSettings.reviewTime || DEFAULT_ENGINE_SETTINGS.reviewTime };
+    const settingsKey = JSON.stringify([reviewOptions.reviewDepth, reviewOptions.reviewTime, reviewOptions.reviewLines, reviewOptions.hash]);
+    const cache = liveReviewCacheRef.current;
+    const useCache = incremental && cache?.settingsKey === settingsKey && cache.moves.length < moves.length && cache.moves.every((move, index) => move === moves[index]);
+    const baseRows = useCache ? cache.result.rows : [];
+    const startFen = baseRows.at(-1)?.fenAfter;
+    const tailMoves = moves.slice(baseRows.length);
+    const updateRows = (rows) => {
+      if (!rows.length) return;
+      setLiveHistory([{ ply: 0, label: "Start", score: rows[0].beforeScore.whiteCp, material: 0 }, ...rows.map((row) => ({ ply: row.index + 1, label: `${Math.floor(row.index / 2) + 1}${row.color === "w" ? "." : "..."} ${row.san}`, score: row.afterScore.whiteCp, material: row.material }))]);
+    };
+    setLiveHistoryProgress({ done: baseRows.length, total: moves.length });
+    setLiveReview({ status: "running", result: baseRows.length ? { ...cache.result, rows: baseRows, review: summarizeGame(baseRows) } : null, error: "", moveCount: moves.length });
+    analyzePracticeMoves(tailMoves, "w", controller.signal, ({ done, rows }) => {
       if (controller.signal.aborted) return;
-      analyzePracticeMoves(moves, "w", controller.signal, ({ done, total, rows }) => {
-        if (controller.signal.aborted) return;
-        setLiveHistoryProgress({ done, total });
-        if (rows.length) setLiveHistory([{ ply: 0, label: "Start", score: rows[0].beforeScore.whiteCp, material: 0 }, ...rows.map((row, index) => ({ ply: index + 1, label: `${Math.floor(index / 2) + 1}${row.color === "w" ? "." : "..."} ${row.san}`, score: row.afterScore.whiteCp, material: row.material }))]);
-      }, undefined, 0, { ...engineSettings, movetime: engineSettings.reviewTime || DEFAULT_ENGINE_SETTINGS.reviewTime }).then((result) => {
-        if (!controller.signal.aborted) {
-          setLiveHistoryProgress(null);
-          setLiveReview({ status: "ready", result, error: "", moveCount: moves.length });
-        }
-      }).catch((error) => {
-        if (!controller.signal.aborted) {
-          setLiveHistoryProgress({ error: error.message, done: 0, total: moves.length });
-          setLiveReview({ status: "error", result: null, error: error.message, moveCount: moves.length });
-        }
-      });
-    }, 1000);
-    controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+      const completedRows = [...baseRows, ...rows];
+      setLiveHistoryProgress({ done: baseRows.length + done, total: moves.length });
+      updateRows(completedRows);
+      if (completedRows.length) setLiveReview({ status: "running", result: { ...cache?.result, rows: completedRows, review: summarizeGame(completedRows), settings: reviewOptions }, error: "", moveCount: moves.length });
+    }, startFen, baseRows.length, { ...reviewOptions, initialScore: baseRows.at(-1)?.afterScore }).then((tailResult) => {
+      if (controller.signal.aborted) return;
+      const rows = [...baseRows, ...tailResult.rows];
+      const result = { ...tailResult, rows, review: summarizeGame(rows) };
+      liveReviewCacheRef.current = { moves: [...moves], result, settingsKey };
+      updateRows(rows);
+      setLiveHistoryProgress(null);
+      setLiveReview({ status: "ready", result, error: "", moveCount: moves.length });
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      setLiveHistoryProgress({ error: error.message, done: 0, total: moves.length });
+      setLiveReview({ status: "error", result: null, error: error.message, moveCount: moves.length });
+    }).finally(() => { if (liveBackfillRef.current === controller) liveBackfillRef.current = null; });
   }
 
   function importAnalysisPgn(pgn) {
@@ -1854,23 +1884,47 @@ function App() {
       const moves = imported.history();
       if (!moves.length) return { ok: false, message: "No legal moves were found in that PGN." };
       if (moves.length > 160) return { ok: false, message: "Load a game with 160 moves or fewer for full chart analysis." };
+      liveBackfillRef.current?.abort();
       setFreeMoves(moves);
+      setAutoReviewRevision((current) => current + 1);
+      liveReviewCacheRef.current = null;
       setAnalysisPly(null);
       setLiveHistory([]);
+      setLiveHistoryProgress(null);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
       setSelectedSquare(null);
       setBoardArrows([]);
-      backfillLiveHistory(moves);
-      return { ok: true, message: `Loaded ${moves.length} moves. The engine is evaluating the final position.` };
+      return { ok: true, message: `Loaded ${moves.length} moves. Game review starts automatically.` };
     } catch {
       return { ok: false, message: "The PGN could not be read. Check the move notation and try again." };
     }
   }
 
   function updateEngineSetting(name, value) {
-    if (["reviewDepth", "reviewTime", "reviewLines", "hash"].includes(name)) {
+    if (name === "reviewPreset") {
+      const preset = {
+        fast: { reviewDepth: 14, reviewTime: 200, reviewLines: 2 },
+        balanced: { reviewDepth: 20, reviewTime: 550, reviewLines: 3 },
+        thorough: { reviewDepth: 28, reviewTime: 2500, reviewLines: 3 },
+      }[value];
+      if (!preset) return;
       liveBackfillRef.current?.abort();
+      liveReviewCacheRef.current = null;
       setLiveHistoryProgress(null);
       setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
+      setEngineSettings((current) => ({ ...current, ...preset }));
+      return;
+    }
+    if (["reviewDepth", "reviewTime", "reviewLines", "hash"].includes(name)) {
+      liveBackfillRef.current?.abort();
+      liveReviewCacheRef.current = null;
+      setLiveHistoryProgress(null);
+      setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 });
+    }
+    if (name === "autoReview" && value === false) {
+      liveBackfillRef.current?.abort();
+      setLiveHistoryProgress(null);
+      setLiveReview((current) => current.status === "running" ? { status: "idle", result: null, error: "", moveCount: 0 } : current);
     }
     setEngineSettings((current) => ({ ...current, [name]: value }));
   }
@@ -2787,7 +2841,7 @@ function App() {
                 </div>}
               </section>
             )}
-            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} currentPly={displayedMoves.length} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} review={liveReview} board={liveBoard} settings={{ ...DEFAULT_ENGINE_SETTINGS, ...engineSettings }} onSettingsChange={updateEngineSetting} onAnalyzeNow={() => setManualAnalysisRequest({ fen: game.fen(), id: Date.now() })} onReviewGame={() => backfillLiveHistory(freeMoves)} openingName={analysisOpening?.name || recognizedOpening?.name} gameOpening={analysisGameOpening} openingTimeline={analysisOpeningTimeline} onUndo={undoBoardMove} onReset={() => { liveBackfillRef.current?.abort(); setFreeMoves([]); setAnalysisPly(null); setLiveHistory([]); setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 }); setLiveHistoryProgress(null); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} onSelectPly={selectAnalysisPly} />}
+            {view === "analysis" && <LiveAnalysisPage game={game} moves={freeMoves} currentPly={displayedMoves.length} analysis={liveAnalysis} history={liveHistory} historyProgress={liveHistoryProgress} review={liveReview} board={liveBoard} settings={{ ...DEFAULT_ENGINE_SETTINGS, ...engineSettings }} onSettingsChange={updateEngineSetting} onAnalyzeNow={() => setManualAnalysisRequest({ fen: game.fen(), id: Date.now() })} onReviewGame={() => backfillLiveHistory(freeMoves)} openingName={analysisOpening?.name || recognizedOpening?.name} gameOpening={analysisGameOpening} openingTimeline={analysisOpeningTimeline} onUndo={undoBoardMove} onReset={() => { liveBackfillRef.current?.abort(); liveReviewCacheRef.current = null; clearTimeout(autoReviewTimerRef.current); setFreeMoves([]); setAnalysisPly(null); setLiveHistory([]); setLiveReview({ status: "idle", result: null, error: "", moveCount: 0 }); setLiveHistoryProgress(null); setSelectedSquare(null); setBoardArrows([]); }} onFlip={() => setOrientation((current) => current === "w" ? "b" : "w")} onImport={importAnalysisPgn} onSelectPly={selectAnalysisPly} />}
             {view !== "overview" && view !== "basics" && view !== "play" && view !== "analysis" && view !== "books" && view !== "articles" && view !== "account" && view !== "admin" && (
               <>
                 <div className="page-heading">

@@ -2,7 +2,7 @@ import { Chess } from "chess.js";
 
 const enginePath = `${import.meta.env.BASE_URL}engine/stockfish-19-lite-single.js`;
 const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-export const DEFAULT_ENGINE_SETTINGS = { depth: 14, movetime: 550, reviewDepth: 14, reviewTime: 200, reviewLines: 2, multiPv: 3, hash: 16, auto: true };
+export const DEFAULT_ENGINE_SETTINGS = { depth: 14, movetime: 550, reviewDepth: 14, reviewTime: 200, reviewLines: 2, multiPv: 3, hash: 16, auto: true, autoReview: true };
 const depthOptions = [8, 12, 14, 16, 20, 24, 28, 32];
 
 function engineSettings(options = {}) {
@@ -235,7 +235,7 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
     const game = initialFen ? new Chess(initialFen) : new Chess();
     const initialMaterial = materialBalance(game);
     const rows = [];
-    let before = await evaluate(game.fen());
+    let before = options.initialScore || await evaluate(game.fen());
     onProgress({ done: 0, total: moves.length, rows: [] });
     for (let index = 0; index < moves.length; index += 1) {
       if (signal.aborted) throw new DOMException("Analysis cancelled.", "AbortError");

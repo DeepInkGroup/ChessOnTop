@@ -78,6 +78,9 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.live-chart-grid .data-chart:first-child circle').length === 4, null, { timeout: 60000 });
     await page.locator(".live-review-list button").first().click();
     if (name === "desktop") assert.match(await page.locator(".live-review-settings-note").innerText(), /3 candidates/);
+    assert.equal(await page.locator(".live-accuracy-chart svg circle").count(), 3);
+    await page.locator(".live-accuracy-chart").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(output, `accuracy-${name}.png`) });
     assert.match(await page.locator(".live-move-notebook").innerText(), /Human findability of the engine move/);
     assert.doesNotMatch(await page.locator(".live-opening-route h3").innerText(), /No catalog match yet/);
     await page.locator(".live-move-notebook").scrollIntoViewIfNeeded();
@@ -88,6 +91,11 @@ try {
     assert.equal(await page.locator("body").evaluate((body) => body.scrollWidth <= innerWidth + 1), true, `${name} live page has horizontal overflow`);
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: resolve(output, `live-${name}.png`) });
+    if (name === "desktop") {
+      await page.getByRole("combobox", { name: "Review preset" }).selectOption("balanced");
+      await page.getByText(/Depth cap 20 · 0\.55s per position/).waitFor({ timeout: 120000 });
+      await page.getByRole("button", { name: "Recalculate" }).waitFor({ timeout: 120000 });
+    }
     if (width <= 1050) await page.getByRole("button", { name: "Open menu" }).click();
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Live analysis" }).click();
     await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
@@ -95,6 +103,10 @@ try {
     const boardWidth = await page.locator(".board-wrap").evaluate((board) => board.getBoundingClientRect().width);
     assert.ok(boardWidth > (width <= 1050 ? Math.min(width * .72, 440) : 300), `${name} board is too narrow: ${boardWidth}px`);
     if (name === "desktop") {
+      assert.equal(await page.getByRole("switch", { name: "Auto review" }).getAttribute("aria-checked"), "true");
+      await page.getByRole("combobox", { name: "Review preset" }).selectOption("balanced");
+      assert.equal(await page.getByRole("combobox", { name: "Review depth" }).inputValue(), "20");
+      await page.getByRole("combobox", { name: "Review preset" }).selectOption("fast");
       const centered = await page.locator(".live-center").evaluate((element) => {
         const board = element.getBoundingClientRect();
         const arena = element.parentElement.getBoundingClientRect();
@@ -120,9 +132,32 @@ try {
       await page.getByRole("button", { name: /Load game/ }).click();
       await page.getByText(/Loaded 14 moves/).waitFor();
       await page.locator(".live-review-list button").nth(13).waitFor({ timeout: 120000 });
+      await page.getByRole("button", { name: "Recalculate" }).waitFor({ timeout: 120000 });
       assert.match(await page.locator(".live-side-review.w").innerText(), /GAME RATING[\s\S]*Elo/);
       assert.match(await page.locator(".live-side-review.b").innerText(), /GAME RATING[\s\S]*Elo/);
       assert.equal(await page.locator(".live-category-row").count(), 4);
+      assert.equal(await page.locator(".live-accuracy-chart svg circle").count(), 14);
+      await page.locator(".live-accuracy-chart svg circle").first().click();
+      assert.match(await page.locator(".live-center-heading > span").innerText(), /1\/14 moves/);
+      await page.locator(".live-board-moves button").last().click();
+      await page.locator('.board-wrap [aria-label="c2 white pawn"]').click();
+      await page.locator('.board-wrap [aria-label="c3"]').click();
+      await page.locator(".live-review-list button").nth(14).waitFor({ timeout: 120000 });
+      await page.getByRole("button", { name: "Recalculate" }).waitFor({ timeout: 120000 });
+      assert.equal(await page.locator(".live-accuracy-chart svg circle").count(), 15, "auto review should add the played move");
+      await page.getByRole("switch", { name: "Auto review" }).click();
+      assert.equal(await page.getByRole("switch", { name: "Auto review" }).getAttribute("aria-checked"), "false");
+      await page.locator('.board-wrap [aria-label="a6 black pawn"]').click();
+      await page.locator('.board-wrap [aria-label="a5"]').click();
+      await page.waitForTimeout(1200);
+      assert.equal(await page.locator(".live-review-list button").count(), 0, "paused auto review should wait for manual review");
+      await page.getByRole("button", { name: "Run now" }).click();
+      await page.locator(".live-review-list button").nth(15).waitFor({ timeout: 120000 });
+      await page.getByRole("textbox", { name: "PGN to analyze" }).fill("1. f3 e5 2. g4 Qh4#");
+      await page.getByRole("button", { name: /Load game/ }).click();
+      await page.getByRole("button", { name: "Run now" }).click();
+      await page.getByRole("button", { name: "Recalculate" }).waitFor({ timeout: 120000 });
+      assert.ok(await page.locator(".live-turning-list button").count() >= 1, "review should surface a game-changing mistake");
     }
     await page.close();
     console.log(`${name}: Stockfish analysis ready; board ${Math.round(boardWidth)}px`);

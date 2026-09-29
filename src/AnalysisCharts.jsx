@@ -44,6 +44,24 @@ export function MaterialTimeline({ points, selected, onSelect }) {
   return <TimelineChart points={points} selected={selected} kind="material" onSelect={onSelect} />;
 }
 
+export function AccuracyTimeline({ rows, selectedPly, onSelectPly }) {
+  const x = (index) => 45 + index / Math.max(1, rows.length - 1) * 630;
+  const y = (accuracy) => 185 - accuracy * 1.6;
+  const sides = [["w", "White", "#6c9c59"], ["b", "Black", "#385947"]];
+  const selected = rows[selectedPly - 1];
+  return <section className="live-accuracy-chart" aria-label="Move accuracy chart">
+    <div className="live-accuracy-chart-head"><div><small>NEW · ACCURACY FLOW</small><h3>Where the game changed.</h3><p>Each dot is one move. Select a point to inspect it on the board.</p></div><div className="live-accuracy-chart-legend">{sides.map(([side, label, color]) => <span key={side}><i style={{ background: color }}/>{label}</span>)}</div></div>
+    {rows.length ? <><svg viewBox="0 0 720 210" preserveAspectRatio="none" role="img" aria-label="Move accuracy for White and Black across the game">
+      {[100, 75, 50, 25, 0].map((value) => <g key={value}><line x1="45" x2="675" y1={y(value)} y2={y(value)} className={value === 50 ? "midline" : ""}/><text x="37" y={y(value) + 4} textAnchor="end">{value}</text></g>)}
+      {sides.map(([side, label, color]) => {
+        const points = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.color === side);
+        const path = points.map(({ row, index }, pointIndex) => `${pointIndex ? "L" : "M"}${x(index)} ${y(row.accuracy)}`).join(" ");
+        return <g key={side}><path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round"/>{points.map(({ row, index }) => <circle key={index} cx={x(index)} cy={y(row.accuracy)} r={selectedPly === index + 1 ? 7 : 5} fill={color} stroke="transparent" strokeWidth="18" role="button" tabIndex="0" aria-label={`${label} move ${Math.floor(index / 2) + 1} ${row.san}, ${row.accuracy}% accuracy`} onClick={() => onSelectPly(index + 1)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectPly(index + 1); } }}><title>{row.san} · {row.label} · {row.accuracy}%</title></circle>)}</g>;
+      })}
+    </svg><div className="live-accuracy-chart-foot"><span>FIRST MOVE</span><strong>{selected ? `${Math.floor((selectedPly - 1) / 2) + 1}${selected.color === "w" ? "." : "..."} ${selected.san} · ${selected.accuracy}%` : `${rows.length} moves reviewed`}</strong><span>LATEST MOVE</span></div></> : <p className="live-accuracy-chart-empty">Your accuracy flow appears as moves are reviewed.</p>}
+  </section>;
+}
+
 export function QualityMix({ counts }) {
   const entries = Object.entries(qualityColors).map(([label, color]) => ({ label, color, count: counts?.[label] || 0 }));
   const total = entries.reduce((sum, entry) => sum + entry.count, 0);
