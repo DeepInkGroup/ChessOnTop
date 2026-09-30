@@ -62,7 +62,7 @@ import openingsC from "./data/openings-c.json";
 import openingsD from "./data/openings-d.json";
 import openingsE from "./data/openings-e.json";
 import { createOpeningBook, gameResult, pickComputerMove } from "./play";
-import { analyzePosition, analyzePracticeMoves, DEFAULT_ENGINE_SETTINGS, summarizeGame } from "./analysisEngine";
+import { analyzePosition, analyzePracticeMoves, DEFAULT_ENGINE_SETTINGS, summarizeGame, summarizeSearch } from "./analysisEngine";
 import EngineReport from "./EngineReport";
 import LiveAnalysisPage from "./LiveAnalysisPage";
 
@@ -1217,7 +1217,9 @@ function App() {
     const label = currentPly ? `${Math.ceil(currentPly / 2)}${currentPly % 2 ? "." : "..."} ${displayedMoves.at(-1)}` : "Start";
     setLiveAnalysis({ status: "running", data: null, error: "" });
     const timer = setTimeout(() => {
-      analyzePosition(liveFen, controller.signal, engineSettings).then((data) => {
+      analyzePosition(liveFen, controller.signal, engineSettings, (data) => {
+        if (!controller.signal.aborted) setLiveAnalysis({ status: "running", data, error: "" });
+      }).then((data) => {
         if (controller.signal.aborted) return;
         setLiveAnalysis({ status: "ready", data, error: "" });
         if (analysisPly === null) setLiveHistory((current) => [...current.filter((point) => point.ply < currentPly), { ply: currentPly, label, score: data.score.whiteCp, material: data.material }]);
@@ -1859,11 +1861,11 @@ function App() {
       const completedRows = [...baseRows, ...rows];
       setLiveHistoryProgress({ done: baseRows.length + done, total: moves.length });
       updateRows(completedRows);
-      if (completedRows.length) setLiveReview({ status: "running", result: { ...cache?.result, rows: completedRows, review: summarizeGame(completedRows), settings: reviewOptions }, error: "", moveCount: moves.length });
+      if (completedRows.length) setLiveReview({ status: "running", result: { ...cache?.result, rows: completedRows, review: summarizeGame(completedRows), searchStats: summarizeSearch(completedRows), settings: reviewOptions }, error: "", moveCount: moves.length });
     }, startFen, baseRows.length, { ...reviewOptions, initialScore: baseRows.at(-1)?.afterScore }).then((tailResult) => {
       if (controller.signal.aborted) return;
       const rows = [...baseRows, ...tailResult.rows];
-      const result = { ...tailResult, rows, review: summarizeGame(rows) };
+      const result = { ...tailResult, rows, review: summarizeGame(rows), searchStats: summarizeSearch(rows) };
       liveReviewCacheRef.current = { moves: [...moves], result, settingsKey };
       updateRows(rows);
       setLiveHistoryProgress(null);

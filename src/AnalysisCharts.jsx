@@ -62,6 +62,26 @@ export function AccuracyTimeline({ rows, selectedPly, onSelectPly }) {
   </section>;
 }
 
+export function ImpactTimeline({ rows, selectedPly, onSelectPly }) {
+  const selected = rows[selectedPly - 1];
+  const highest = Math.max(10, ...rows.map((row) => row.chanceLoss));
+  const scale = Math.ceil(Math.min(100, highest) / 10) * 10;
+  const width = Math.max(300, rows.length * 29 + 80);
+  const spacing = (width - 100) / Math.max(1, rows.length);
+  const y = (value) => 160 - Math.min(value, scale) / scale * 120;
+  return <section className="live-impact-chart" aria-label="Move impact chart">
+    <div className="live-accuracy-chart-head"><div><small>ENGINE IMPACT</small><h3>Where chances slipped.</h3><p>Each bar shows estimated winning chance lost on that move.</p></div><strong className="live-impact-selected">{selected ? `${selected.san} · −${selected.chanceLoss}%` : `${rows.length} moves`}</strong></div>
+    {rows.length ? <><div className="live-impact-scroll"><svg viewBox={`0 0 ${width} 185`} style={{ minWidth: `${width}px` }} role="img" aria-label="Winning chance lost after each move">
+      {[0, .25, .5, .75, 1].map((fraction) => <g key={fraction}><line x1="45" x2={width - 30} y1={y(scale * fraction)} y2={y(scale * fraction)}/><text x="38" y={y(scale * fraction) + 4} textAnchor="end">{Math.round(scale * fraction)}%</text></g>)}
+      {rows.map((row, index) => {
+        const color = row.chanceLoss >= 20 ? "#c85f5c" : row.chanceLoss >= 10 ? "#dc8b62" : row.chanceLoss >= 5 ? "#e4b75d" : row.color === "w" ? "#7dae71" : "#426c50";
+        const barY = Math.min(157, y(row.chanceLoss));
+        return <g key={index}><rect x={55 + index * spacing} y={barY} width={Math.min(19, spacing - 6)} height={160 - barY} rx="3" fill={color} stroke={selectedPly === index + 1 ? "#244b35" : "transparent"} strokeWidth="2" role="button" tabIndex="0" aria-label={`Move ${Math.floor(index / 2) + 1} ${row.san}, ${row.chanceLoss}% win chance lost`} onClick={() => onSelectPly(index + 1)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectPly(index + 1); } }}><title>{row.san} · {row.label} · −{row.chanceLoss}%</title></rect><text x={65 + index * spacing} y="177" textAnchor="middle">{Math.floor(index / 2) + 1}{row.color === "w" ? "." : ""}</text></g>;
+      })}
+    </svg></div><div className="live-impact-legend"><span><i className="steady"/>Small change</span><span><i className="inaccuracy"/>Inaccuracy</span><span><i className="mistake"/>Mistake</span><span><i className="blunder"/>Blunder</span></div></> : <p className="live-accuracy-chart-empty">Move impact appears when the engine finishes a review.</p>}
+  </section>;
+}
+
 export function QualityMix({ counts }) {
   const entries = Object.entries(qualityColors).map(([label, color]) => ({ label, color, count: counts?.[label] || 0 }));
   const total = entries.reduce((sum, entry) => sum + entry.count, 0);

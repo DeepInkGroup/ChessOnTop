@@ -153,13 +153,36 @@ function scoreFromInfo(game, line) {
   return { whiteCp: cp * (game.turn() === "w" ? 1 : -1), mate: match[1] === "mate" ? value : null };
 }
 
+function searchInfo(game, line) {
+  if (!line.startsWith("info ") || !line.includes(" score ") || !line.includes(" pv ") || /\b(?:lowerbound|upperbound)\b/.test(line)) return null;
+  const score = scoreFromInfo(game, line);
+  const pv = line.split(" pv ")[1]?.trim().split(/\s+/) || [];
+  if (!score || !pv.length) return null;
+  const number = (name) => Number(line.match(new RegExp(`\\b${name} (\\d+)`))?.[1] || 0);
+  return { rank: number("multipv") || 1, depth: number("depth"), score, pv, nodes: number("nodes"), nps: number("nps"), searchMs: number("time"), hashfull: number("hashfull") };
+}
+
+export function summarizeSearch(rows) {
+  if (!rows.length) return { positions: 0, avgDepth: 0, minDepth: 0, maxDepth: 0, nodes: 0, searchMs: 0 };
+  const positions = [rows[0].beforeScore, ...rows.map((row) => row.afterScore)];
+  const searched = positions.filter((position) => position.depth > 0);
+  return {
+    positions: positions.length,
+    avgDepth: searched.length ? Math.round(searched.reduce((sum, position) => sum + position.depth, 0) / searched.length) : 0,
+    minDepth: searched.length ? Math.min(...searched.map((position) => position.depth)) : 0,
+    maxDepth: searched.length ? Math.max(...searched.map((position) => position.depth)) : 0,
+    nodes: positions.reduce((sum, position) => sum + (position.nodes || 0), 0),
+    searchMs: positions.reduce((sum, position) => sum + (position.searchMs || 0), 0),
+  };
+}
+
 export function formatEngineScore(score) {
   if (!score) return "0.00";
   if (score.mate !== null) return `${score.whiteCp < 0 ? "−" : ""}M${Math.abs(score.mate)}`;
   return `${score.whiteCp > 0 ? "+" : score.whiteCp < 0 ? "−" : ""}${(Math.abs(score.whiteCp) / 100).toFixed(2)}`;
 }
 
-export async function analyzePosition(fen, signal, options = DEFAULT_ENGINE_SETTINGS) {
+export async function analyzePosition(fen, signal, options = DEFAULT_ENGINE_SETTINGS, onUpdate) {
   const settings = engineSettings(options);
   const game = new Chess(fen);
   const material = materialBalance(game);
@@ -168,7 +191,7 @@ export async function analyzePosition(fen, signal, options = DEFAULT_ENGINE_SETT
   const phase = pieceCount <= 12 ? "Endgame" : Number(fen.split(" ")[5]) <= 10 ? "Opening" : "Middle game";
   if (game.isGameOver()) {
     const whiteCp = game.isCheckmate() ? game.turn() === "w" ? -1200 : 1200 : 0;
-    return { fen, score: { whiteCp, mate: game.isCheckmate() ? 0 : null }, lines: [], depth: 0, material, pieceCount, legalMoves, phase, status: game.isCheckmate() ? "Checkmate" : "Draw" };
+    return { fen, score: { whiteCp, mate: game.isCheckmate() ? 0 : null }, lines: [], depth: 0, nodes: 0, nps: 0, searchMs: 0, hashfull: 0, material, pieceCount, legalMoves, phase, status: game.isCheckmate() ? "Checkmate" : "Draw" };
   }
   const worker = new Worker(enginePath);
   try {
@@ -178,18 +201,35 @@ export async function analyzePosition(fen, signal, options = DEFAULT_ENGINE_SETT
     worker.postMessage(`setoption name MultiPV value ${settings.multiPv}`);
     await request(worker, signal, "isready", (line) => line === "readyok");
     worker.postMessage(`position fen ${fen}`);
-    const lines = new Map();
+    const latestLines = new Map();
+    const iterations = new Map();
+    const expected = Math.min(settings.multiPv, legalMoves);
+    let completedDepth = 0;
+    let lastUpdateMs = -100;
+    const snapshot = (rankedLines) => {
+      const first = rankedLines[0];
+      return { fen, score: first?.score || { whiteCp: 0, mate: null }, lines: rankedLines, depth: first?.depth || 0, nodes: first?.nodes || 0, nps: first?.nps || 0, searchMs: first?.searchMs || 0, hashfull: first?.hashfull || 0, material, pieceCount, legalMoves, phase, status: game.isCheck() ? "Check" : "In play" };
+    };
     await request(worker, signal, `go depth ${settings.depth} movetime ${settings.movetime}`, (line) => line.startsWith("bestmove "), (line) => {
-      if (!line.startsWith("info ") || !line.includes(" score ") || !line.includes(" pv ")) return;
-      const pvRank = Number(line.match(/\bmultipv (\d+)/)?.[1] || 1);
-      const depth = Number(line.match(/\bdepth (\d+)/)?.[1] || 0);
-      const score = scoreFromInfo(game, line);
-      const pv = line.split(" pv ")[1]?.trim().split(/\s+/) || [];
-      if (!score || !pv.length || (lines.get(pvRank)?.depth || 0) > depth) return;
-      lines.set(pvRank, { rank: pvRank, depth, score, san: sanFromUci(fen, pv[0]), uci: pv[0], line: lineFromUci(fen, pv), from: pv[0].slice(0, 2), to: pv[0].slice(2, 4) });
+      const info = searchInfo(game, line);
+      if (!info || !info.depth || info.rank > expected) return;
+      const item = { rank: info.rank, depth: info.depth, score: info.score, san: sanFromUci(fen, info.pv[0]), uci: info.pv[0], line: lineFromUci(fen, info.pv), from: info.pv[0].slice(0, 2), to: info.pv[0].slice(2, 4), nodes: info.nodes, nps: info.nps, searchMs: info.searchMs, hashfull: info.hashfull };
+      if ((latestLines.get(info.rank)?.depth || 0) <= info.depth) latestLines.set(info.rank, item);
+      if (!iterations.has(info.depth)) iterations.set(info.depth, new Map());
+      iterations.get(info.depth).set(info.rank, item);
+      const group = iterations.get(info.depth);
+      if (group.size >= expected && info.depth > completedDepth) {
+        completedDepth = info.depth;
+        if (info.searchMs - lastUpdateMs >= 90 || info.depth <= 3) {
+          lastUpdateMs = info.searchMs;
+          onUpdate?.(snapshot([...group.values()].sort((a, b) => a.rank - b.rank)));
+        }
+        for (const depth of iterations.keys()) if (depth < completedDepth - 2) iterations.delete(depth);
+      }
     }, 30000);
-    const rankedLines = [...lines.values()].sort((a, b) => a.rank - b.rank);
-    return { fen, score: rankedLines[0]?.score || { whiteCp: 0, mate: null }, lines: rankedLines, depth: rankedLines[0]?.depth || 0, material, pieceCount, legalMoves, phase, status: game.isCheck() ? "Check" : "In play" };
+    const complete = iterations.get(completedDepth);
+    const rankedLines = [...(complete?.values() || latestLines.values())].sort((a, b) => a.rank - b.rank);
+    return snapshot(rankedLines);
   } finally {
     worker.terminate();
   }
@@ -210,26 +250,24 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
       const game = new Chess(fen);
       if (game.isGameOver()) {
         const whiteCp = game.isCheckmate() ? game.turn() === "w" ? -1200 : 1200 : 0;
-        return { whiteCp, mate: game.isCheckmate() ? 0 : null, bestUci: null, line: "", pvUci: [], secondScore: null, depth: 0 };
+        return { whiteCp, mate: game.isCheckmate() ? 0 : null, bestUci: null, line: "", pvUci: [], secondScore: null, depth: 0, nodes: 0, nps: 0, searchMs: 0, hashfull: 0 };
       }
-      let latest = { whiteCp: 0, mate: null, bestUci: null, line: "", pvUci: [], secondScore: null, depth: 0 };
-      let secondDepth = 0;
+      const latest = new Map();
+      const iterations = new Map();
+      const needsSecond = game.moves().length > 1;
       worker.postMessage(`position fen ${fen}`);
       const result = await request(worker, signal, `go depth ${settings.reviewDepth} movetime ${settings.movetime}`, (line) => line.startsWith("bestmove "), (line) => {
-        if (!line.startsWith("info ") || !line.includes(" score ")) return;
-        const depth = Number(line.match(/\bdepth (\d+)/)?.[1] || 0);
-        const rank = Number(line.match(/\bmultipv (\d+)/)?.[1] || 1);
-        const score = scoreFromInfo(game, line);
-        if (!score) return;
-        const pv = line.split(" pv ")[1]?.trim().split(/\s+/) || [];
-        if (rank === 2 && depth >= secondDepth) {
-          secondDepth = depth;
-          latest.secondScore = score;
-        }
-        if (rank === 1 && depth >= latest.depth) latest = { ...latest, ...score, bestUci: pv[0] || latest.bestUci, line: pv.length ? lineFromUci(fen, pv) : latest.line, pvUci: pv, depth };
+        const info = searchInfo(game, line);
+        if (!info || !info.depth || info.rank > 2) return;
+        if ((latest.get(info.rank)?.depth || 0) <= info.depth) latest.set(info.rank, info);
+        if (!iterations.has(info.depth)) iterations.set(info.depth, new Map());
+        iterations.get(info.depth).set(info.rank, info);
       }, Math.max(25000, settings.movetime * 4));
-      latest.bestUci ||= result.split(/\s+/)[1] || null;
-      return latest;
+      const completeDepth = [...iterations.keys()].sort((a, b) => b - a).find((depth) => iterations.get(depth).has(1) && (!needsSecond || iterations.get(depth).has(2)));
+      const group = iterations.get(completeDepth);
+      const first = group?.get(1) || latest.get(1);
+      const second = group?.get(2) || (latest.get(2)?.depth === first?.depth ? latest.get(2) : null);
+      return { ...(first?.score || { whiteCp: 0, mate: null }), bestUci: first?.pv[0] || result.split(/\s+/)[1] || null, line: first?.pv.length ? lineFromUci(fen, first.pv) : "", pvUci: first?.pv || [], secondScore: second?.score || null, depth: first?.depth || 0, nodes: first?.nodes || 0, nps: first?.nps || 0, searchMs: first?.searchMs || 0, hashfull: first?.hashfull || 0 };
     };
 
     const game = initialFen ? new Chess(initialFen) : new Chess();
@@ -312,6 +350,7 @@ export async function analyzePracticeMoves(moves, playerSide, signal, onProgress
       initialMaterial,
       finalScore: before,
       depth: Math.max(...rows.map((row) => row.afterScore.depth)),
+      searchStats: summarizeSearch(rows),
       settings,
     };
   } finally {

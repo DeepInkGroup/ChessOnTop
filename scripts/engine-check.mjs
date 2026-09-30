@@ -61,6 +61,8 @@ try {
     await report.getByRole("button", { name: /Open in Live Analysis/ }).click();
     await page.locator(".live-variations > div").first().waitFor({ timeout: 60000 });
     assert.equal(await page.locator(".live-variations > div").count(), 3, `${name} should show three engine lines`);
+    assert.match(await page.locator(".live-search-telemetry").innerText(), /DEPTH[\s\S]*NODES[\s\S]*SPEED/);
+    assert.ok(Number(await page.locator(".live-search-telemetry > div:nth-child(2) strong").innerText()) > 0, `${name} should report search depth`);
     assert.equal(await page.locator(".analysis-mode").count(), 1);
     const beforeMoveCount = await page.locator(".live-board-moves button").count();
     const whiteToMove = (await page.locator(".live-hero-status").innerText()).includes("White to move");
@@ -79,6 +81,10 @@ try {
     await page.locator(".live-review-list button").first().click();
     if (name === "desktop") assert.match(await page.locator(".live-review-settings-note").innerText(), /3 candidates/);
     assert.equal(await page.locator(".live-accuracy-chart svg circle").count(), 3);
+    assert.equal(await page.locator(".live-impact-scroll rect").count(), 3);
+    assert.match(await page.locator(".live-review-search").innerText(), /POSITIONS[\s\S]*AVG DEPTH[\s\S]*NODES/);
+    await page.locator(".live-impact-scroll rect").first().click();
+    assert.match(await page.locator(".live-center-heading > span").innerText(), /1\/3 moves/);
     await page.locator(".live-accuracy-chart").scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(output, `accuracy-${name}.png`) });
     assert.match(await page.locator(".live-move-notebook").innerText(), /Human findability of the engine move/);

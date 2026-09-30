@@ -4180,3 +4180,37 @@ button svg {
 .live-turning-empty { justify-self: stretch; padding: 16px; border: 1px dashed #dfe9da; border-radius: 8px; text-align: center; }
 @media (max-width: 1040px) { .live-turning-points { grid-template-columns: 1fr; } }
 @media (max-width: 740px) { .live-accuracy-chart, .live-turning-points { padding: 15px; }.live-accuracy-chart-head { align-items: start; flex-direction: column; }.live-accuracy-chart svg { height: 170px; }.live-turning-list { grid-template-columns: 1fr; } }
+
+/* Search progress and review workload. */
+.live-search-telemetry { display: grid; grid-template-columns: minmax(155px,1.5fr) repeat(5,minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid #dce8d5; border-radius: 12px; background: #dce8d5; }
+.live-search-telemetry > div { display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 76px; padding: 12px 15px; background: #f7faf5; }
+.live-search-telemetry > div:first-child { background: #ebf4e8; }
+.live-search-telemetry small { color: #819b80; font-size: 8px; font-weight: 900; letter-spacing: .8px; }
+.live-search-telemetry strong { overflow: hidden; margin-top: 4px; color: #335b3c; font-size: 17px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.live-search-telemetry > div:first-child strong { font-size: 11px; }
+.live-search-telemetry span:not(.eyebrow) { margin-top: 3px; color: #91a491; font-size: 8px; }
+.live-review-search { display: grid; grid-template-columns: minmax(180px,.8fr) minmax(0,2fr); gap: 16px; align-items: center; padding: 17px 19px; border: 1px solid #dce8d5; border-radius: 11px; background: #fff; }
+.live-review-search-head p { max-width: 260px; margin: 5px 0 0; color: #849984; font-size: 10px; line-height: 1.45; }
+.live-review-search-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.live-review-search-grid > div { min-width: 0; padding: 10px; border-radius: 8px; background: #f3f8f0; }
+.live-review-search-grid small, .live-review-search-grid span { display: block; overflow: hidden; color: #849b84; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.live-review-search-grid small { font-weight: 900; letter-spacing: .6px; }
+.live-review-search-grid strong { display: block; margin: 4px 0 2px; color: #31583b; font: 400 22px "DM Serif Display", Georgia, serif; }
+.live-review-charts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.live-impact-chart { min-width: 0; padding: 20px; border: 1px solid #dce8d5; border-radius: 12px; background: #fff; }
+.live-impact-selected { color: #436b4a; font-size: 10px; white-space: nowrap; }
+.live-impact-scroll { max-width: 100%; margin-top: 13px; overflow-x: auto; overflow-y: hidden; }
+.live-impact-scroll svg { display: block; width: 100%; height: 185px; }
+.live-impact-scroll line { stroke: #e7eee2; stroke-width: 1; }
+.live-impact-scroll text { fill: #8ea38e; font-size: 9px; font-weight: 700; }
+.live-impact-scroll rect { cursor: pointer; }
+.live-impact-scroll rect:focus-visible { outline: 2px solid #315b40; outline-offset: 2px; }
+.live-impact-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; margin-top: 9px; }
+.live-impact-legend span { display: inline-flex; align-items: center; gap: 5px; color: #788f7b; font-size: 8px; font-weight: 800; }
+.live-impact-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #7dae71; }
+.live-impact-legend i.inaccuracy { background: #e4b75d; }
+.live-impact-legend i.mistake { background: #dc8b62; }
+.live-impact-legend i.blunder { background: #c85f5c; }
+@media (max-width: 1180px) { .live-search-telemetry { grid-template-columns: repeat(5,minmax(0,1fr)); }.live-search-telemetry > div:first-child { grid-column: 1 / -1; min-height: 55px; }.live-review-charts { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .live-review-search { grid-template-columns: 1fr; }.live-review-search-head p { max-width: none; } }
+@media (max-width: 600px) { .live-search-telemetry { grid-template-columns: repeat(2,minmax(0,1fr)); }.live-search-telemetry > div:first-child { grid-column: 1 / -1; }.live-review-search-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.live-impact-chart { padding: 15px; } }
